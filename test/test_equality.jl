@@ -53,3 +53,16 @@ f32_tree = GraphNode{Float32}(x1 + x2 * x3 - log(x2 * 3.0) + 1.5 * cos(x2 / x1))
 @test f64_tree == f32_tree
 
 @test Node(f64_tree) == Node(f32_tree)
+
+@testset "Signed-zero hash consistency" begin
+    positive_zero = Node(; val=0.0)
+    negative_zero = Node(; val=-0.0)
+    @test positive_zero == negative_zero
+    @test hash(positive_zero) == hash(negative_zero)
+    @test length(Set([positive_zero, negative_zero])) == 1
+
+    positive_branch = Node(; op=1, children=(positive_zero,))
+    negative_branch = Node(; op=1, children=(negative_zero,))
+    @test positive_branch == negative_branch
+    @test hash(positive_branch) == hash(negative_branch)
+end

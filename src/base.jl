@@ -479,7 +479,13 @@ function hash(
     )
 end
 function leaf_hash(h::UInt, t::AbstractExpressionNode)
-    return t.constant ? hash((0, t.val), h) : hash((1, t.feature), h)
+    if t.constant
+        value = t.val
+        value isa AbstractFloat && iszero(value) && (value = zero(value))
+        return hash((0, value), h)
+    else
+        return hash((1, t.feature), h)
+    end
 end
 function branch_hash(h::UInt, t::AbstractExpressionNode, children::Vararg{Any,M}) where {M}
     return hash((t.degree + 1, t.op, children), h)
