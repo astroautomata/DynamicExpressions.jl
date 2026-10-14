@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.13.0](https://github.com/astroautomata/DynamicExpressions.jl/compare/v2.12.0...v2.13.0) (2026-10-14)
+
+
+### Features
+
+* add copy_value to value interface ([#243](https://github.com/astroautomata/DynamicExpressions.jl/issues/243)) ([59c80a8](https://github.com/astroautomata/DynamicExpressions.jl/commit/59c80a8e984543516665625e61385ba71b173986))
+
+
+### Bug Fixes
+
+* copy mutable constant values when copying ParametricNode ([#248](https://github.com/astroautomata/DynamicExpressions.jl/issues/248)) ([7dd6571](https://github.com/astroautomata/DynamicExpressions.jl/commit/7dd65714b5abc630701c5cf304285027319bc82f))
+* honor node_type for interpolated nodes in parse_expression ([#232](https://github.com/astroautomata/DynamicExpressions.jl/issues/232)) ([0e195da](https://github.com/astroautomata/DynamicExpressions.jl/commit/0e195dab1c7accd35f3b0a7f4e65f5e9979ab908))
+* is_valid_array accepts finite arrays whose sum overflows ([#249](https://github.com/astroautomata/DynamicExpressions.jl/issues/249)) ([b9ec1a4](https://github.com/astroautomata/DynamicExpressions.jl/commit/b9ec1a4e57fae3b9c3f6dcdf21c002ae1dee6336))
+* ParametricNode copy keeps the element type ([#261](https://github.com/astroautomata/DynamicExpressions.jl/issues/261)) ([798137a](https://github.com/astroautomata/DynamicExpressions.jl/commit/798137aab57e8581b362976a4767133181c86ba2))
+* parenthesize signed power bases when printing ([#228](https://github.com/astroautomata/DynamicExpressions.jl/issues/228)) ([1eb033d](https://github.com/astroautomata/DynamicExpressions.jl/commit/1eb033d805a4c69dad6362fc35157da529676b2f))
+* precompile workload loops over the selected operator tuples ([#258](https://github.com/astroautomata/DynamicExpressions.jl/issues/258)) ([3bc9329](https://github.com/astroautomata/DynamicExpressions.jl/commit/3bc93298502f643a85539f907d31a251e17db041))
+* raise the intended error for an invalid precompile mode ([#257](https://github.com/astroautomata/DynamicExpressions.jl/issues/257)) ([6dc6027](https://github.com/astroautomata/DynamicExpressions.jl/commit/6dc6027c9103716dc6a6ecebfa484068c3529bd3))
+* throw MissingOperatorError when the operator degree is absent ([#253](https://github.com/astroautomata/DynamicExpressions.jl/issues/253)) ([56ef30c](https://github.com/astroautomata/DynamicExpressions.jl/commit/56ef30c7098c9b5427f1bdd25c2cdc04543b27ac))
+* throw when Node is given r without l ([#235](https://github.com/astroautomata/DynamicExpressions.jl/issues/235)) ([06a1cbf](https://github.com/astroautomata/DynamicExpressions.jl/commit/06a1cbf3a4ba38bda77f072548097a53e4c978f9))
+* throw when set_children! gets more children than the node can hold ([#236](https://github.com/astroautomata/DynamicExpressions.jl/issues/236)) ([c38331c](https://github.com/astroautomata/DynamicExpressions.jl/commit/c38331ccb45862cd81d695ba64bcff407d9934da))
+
 ## [2.12.0](https://github.com/astroautomata/DynamicExpressions.jl/compare/v2.11.0...v2.12.0) (2026-09-29)
 
 
