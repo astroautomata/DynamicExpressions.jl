@@ -287,7 +287,7 @@ end
 #! format: off
 @unstable constructorof(::Type{E}) where {E<:AbstractExpression} = Base.typename(E).wrapper
 @unstable constructorof(::Type{<:Expression}) = Expression
-copy_node(ex::AbstractExpression; kws...) = copy(ex)
+copy_node(ex::AbstractExpression; kws...) = copy(ex; kws...)
 count_nodes(ex::AbstractExpression; kws...) = count_nodes(get_tree(ex); kws...)
 
 function tree_mapreduce(

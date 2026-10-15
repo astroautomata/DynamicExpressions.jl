@@ -491,3 +491,17 @@ end
     X = [5.0 7.0]  # Two points: 5 and 7
     @test tree(X, operators) ≈ [1.0, 1.0]
 end
+
+@testitem "Expression copy_node forwards sharing options" begin
+    child = GraphNode{Float64}(; feature=1)
+    tree = GraphNode{Float64}(; op=1, children=(child, child))
+    ex = Expression(tree; operators=OperatorEnum(2 => (+,)))
+    broken = copy_node(ex; break_sharing=Val(true))
+    @test get_child(get_tree(broken), 1) !== get_child(get_tree(broken), 2)
+    shared = copy_node(ex; break_sharing=Val(false))
+    @test get_child(get_tree(shared), 1) === get_child(get_tree(shared), 2)
+    @test get_tree(broken) !== tree
+    @test get_tree(shared) !== tree
+    structured = StructuredExpression((; f=ex); structure=nt -> nt.f)
+    @test copy_node(structured; break_sharing=Val(true)) isa StructuredExpression
+end

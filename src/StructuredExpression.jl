@@ -110,11 +110,11 @@ function StructuredExpression(
     return StructuredExpression(trees, Metadata(metadata))
 end
 constructorof(::Type{<:StructuredExpression}) = StructuredExpression
-function Base.copy(e::AbstractStructuredExpression)
+function Base.copy(e::AbstractStructuredExpression; break_sharing::Val=Val(false))
     ts = get_contents(e)
     meta = get_metadata(e)
     meta_inner = unpack_metadata(meta)
-    copy_ts = NamedTuple{keys(ts)}(map(copy, values(ts)))
+    copy_ts = NamedTuple{keys(ts)}(map(t -> copy(t; break_sharing), values(ts)))
     keys_except_structure = filter(!=(:structure), keys(meta_inner))
     copy_metadata = (;
         meta_inner.structure,
