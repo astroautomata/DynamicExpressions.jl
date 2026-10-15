@@ -123,6 +123,21 @@ end
     include("test_random.jl")
 end
 
+@testitem "NodeSampler rejects negative and non-finite weights" begin
+    operators = OperatorEnum(; binary_operators=[+, -, *, /], unary_operators=[cos, sin])
+    x = GraphNode(Float64; feature=1)
+    tree = cos(x) + x
+
+    for weight in (-1.0, -Inf, Inf, NaN)
+        @test_throws "finite and nonnegative" rand(
+            NodeSampler(; tree, weighting=_ -> weight)
+        )
+    end
+    @test_throws ArgumentError rand(
+        NodeSampler(; tree, weighting=node -> node === x ? -1.0 : 1.0)
+    )
+end
+
 include("test_expressions.jl")
 include("test_multi_expression.jl")
 include("test_parse.jl")

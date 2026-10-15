@@ -85,6 +85,8 @@ function _get_node(
 end
 
 function _sample_idx(rng::AbstractRNG, weights)
+    any(w -> !isfinite(w) || w < 0, weights) &&
+        throw(ArgumentError("Node weights must be finite and nonnegative."))
     csum = cumsum(weights)
     if iszero(csum[end])
         error("Cumulative weighting of nodes in tree is zero.")
