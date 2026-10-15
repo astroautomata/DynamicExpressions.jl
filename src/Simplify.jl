@@ -19,10 +19,15 @@ is_subtraction(::typeof(-)) = true
 is_subtraction(_) = false
 # COV_EXCL_STOP
 
-combine_operators(tree::AbstractExpressionNode, ::AbstractOperatorEnum) = tree
-# This is only defined for `Node` as it is not possible for, e.g.,
+combine_operators!(tree::AbstractExpressionNode, ::AbstractOperatorEnum) = tree
+# This is only defined for `Node` and `ParametricNode` as it is not possible for, e.g.,
 # `GraphNode`, and n-arity nodes.
-function combine_operators(tree::Node{T,2}, operators::AbstractOperatorEnum) where {T}
+function combine_operators!(tree::Node{T,2}, operators::AbstractOperatorEnum) where {T}
+    return _combine_operators!(tree, operators)
+end
+function _combine_operators!(
+    tree::AbstractExpressionNode{T,2}, operators::AbstractOperatorEnum
+) where {T}
     # NOTE: (const (+*-) const) already accounted for. Call simplify_tree! before.
     # ((const + var) + const) => (const + var)
     # ((const * var) * const) => (const * var)
@@ -32,10 +37,10 @@ function combine_operators(tree::Node{T,2}, operators::AbstractOperatorEnum) whe
     if tree.degree == 0
         return tree
     elseif tree.degree == 1
-        set_child!(tree, combine_operators(get_child(tree, 1), operators), 1)
+        set_child!(tree, _combine_operators!(get_child(tree, 1), operators), 1)
     elseif tree.degree == 2
-        set_child!(tree, combine_operators(get_child(tree, 1), operators), 1)
-        set_child!(tree, combine_operators(get_child(tree, 2), operators), 2)
+        set_child!(tree, _combine_operators!(get_child(tree, 1), operators), 1)
+        set_child!(tree, _combine_operators!(get_child(tree, 2), operators), 2)
     end
 
     top_level_constant =
@@ -114,6 +119,9 @@ function combine_operators(tree::Node{T,2}, operators::AbstractOperatorEnum) whe
     end
     return tree
 end
+
+Base.@deprecate combine_operators(tree, operators) combine_operators!(tree, operators)
+Base.@deprecate combine_operators(ex) combine_operators!(ex)
 
 function combine_children!(
     operators, p::N, c::Vararg{N,degree}

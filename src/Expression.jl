@@ -26,7 +26,7 @@ import ..EvaluateDerivativeModule: eval_grad_tree_array
 import ..EvaluationHelpersModule: _grad_evaluator
 import ..StringsModule: string_tree, print_tree
 import ..ChainRulesModule: extract_gradient
-import ..SimplifyModule: combine_operators, simplify_tree!
+import ..SimplifyModule: combine_operators!, simplify_tree!
 
 """A wrapper for a named tuple to avoid piracy."""
 struct Metadata{NT<:NamedTuple}
