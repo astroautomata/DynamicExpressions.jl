@@ -559,8 +559,9 @@ function convert(
 end
 function convert(
     ::Type{N1}, tree::N2
-) where {T2,N1<:AbstractExpressionNode,N2<:AbstractExpressionNode{T2}}
-    return convert(with_type_parameters(N1, T2), tree)
+) where {T2,D,N1<:AbstractExpressionNode,N2<:AbstractExpressionNode{T2,D}}
+    NT = has_max_degree(N1) ? N1 : with_max_degree(N1, Val(D))
+    return convert(with_type_parameters(NT, T2), tree)
 end
 function (::Type{N})(tree::AbstractExpressionNode) where {N<:AbstractExpressionNode}
     return convert(N, tree)

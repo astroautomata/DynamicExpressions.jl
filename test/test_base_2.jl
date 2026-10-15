@@ -126,6 +126,14 @@
     #literate_end
 end
 
+@testitem "Unparameterized conversion preserves degree" begin
+    for D in (1, 3), N in (Node, GraphNode)
+        x = N{Float64,D}(; feature=1)
+        @test convert(N, x) === x
+        @test N(x) === x
+    end
+end
+
 @testitem "Right child requires left child" begin
     x = Node{Float64}(; feature=1)
     @test_throws ArgumentError Node{Float64}(; r=x)
