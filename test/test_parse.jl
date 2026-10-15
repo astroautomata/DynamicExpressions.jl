@@ -699,3 +699,15 @@ end
     @test parsed.tree isa GraphNode{Float64}
     @test all(n -> n isa GraphNode{Float64}, parsed.tree)
 end
+
+@testitem "StringsParse nonfinite constants round-trip" begin
+    using DynamicExpressions
+    using Test
+    operators = OperatorEnum(; define_helper_functions=false)
+    for value in (NaN, Inf, -Inf, NaN32, Inf32, -Inf32)
+        parsed = parse_expression(string_tree(Node(; val=value), operators); operators)
+        @test parsed.tree.degree == 0
+        @test parsed.tree.constant
+        @test isequal(parsed.tree.val, value)
+    end
+end

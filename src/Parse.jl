@@ -216,10 +216,20 @@ end
     )
 end
 
-_replace_imaginary_unit_symbol(ex) = ex
-@unstable _replace_imaginary_unit_symbol(ex::Symbol) = ex === :im ? im : ex
-@unstable function _replace_imaginary_unit_symbol(ex::Expr)
-    args = map(_replace_imaginary_unit_symbol, ex.args)
+_normalize_expression_for_parse(ex, variable_names) = ex
+@unstable function _normalize_expression_for_parse(ex::Symbol, variable_names)
+    variable_names !== nothing && string(ex) in variable_names && return ex
+    ex === :im && return im
+    ex === :NaN && return NaN
+    ex === :Inf && return Inf
+    return ex
+end
+@unstable function _normalize_expression_for_parse(ex::Expr, variable_names)
+    args = map(arg -> _normalize_expression_for_parse(arg, variable_names), ex.args)
+    if ex.head == :call && length(args) == 2 && args[2] isa Real && !isfinite(args[2])
+        first(args) === :- && return -args[2]
+        first(args) === :+ && return args[2]
+    end
     # Fold constant arithmetic involving the imaginary unit, so that the
     # normalized string form of a complex constant (`a + b*im`) parses back
     # into a single constant leaf:
@@ -236,15 +246,6 @@ _replace_imaginary_unit_symbol(ex) = ex
         end
     end
     return Expr(ex.head, args...)
-end
-
-@unstable function _normalize_expression_for_parse(
-    ex, variable_names::Union{AbstractVector{<:AbstractString},Nothing}
-)
-    if variable_names !== nothing && ("im" in variable_names)
-        return ex
-    end
-    return _replace_imaginary_unit_symbol(ex)
 end
 
 """Parse an expression Julia `Expr` object."""
