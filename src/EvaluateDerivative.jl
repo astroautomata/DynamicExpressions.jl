@@ -49,7 +49,7 @@ function eval_diff_tree_array(
 
     # TODO: `turbo` slows performance. Need to fix.
     result = _eval_diff_tree_array(tree, cX, operators, direction)
-    return (result.x, result.dx, result.ok)
+    return (result.x, result.dx, is_valid_array(result.x) && is_valid_array(result.dx))
 end
 function eval_diff_tree_array(
     tree::AbstractExpressionNode{T1},
