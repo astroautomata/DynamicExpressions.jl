@@ -96,6 +96,20 @@ end
     # Helpful error if we use it incorrectly
     @test_throws "Incorrect call. You must pass" ex(X)
 end
+@testitem "Parametric scalar setters snapshot overlapping input" begin
+    using DynamicExpressions
+
+    parameters = [10.0 20.0]
+    ex = ParametricExpression(
+        ParametricNode{Float64}(; feature=1); operators=nothing, parameters
+    )
+    _, refs = get_scalar_constants(ex)
+    input = view(vec(parameters), 2:-1:1)
+    expected = copy(input)
+    @test Base.mightalias(input, get_metadata(ex).parameters)
+    set_scalar_constants!(ex, input, refs)
+    @test first(get_scalar_constants(ex)) == expected
+end
 
 @testitem "2 parameters, 2 variables" begin
     using DynamicExpressions

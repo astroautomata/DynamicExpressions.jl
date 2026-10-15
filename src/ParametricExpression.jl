@@ -267,6 +267,7 @@ function get_scalar_constants(ex::ParametricExpression{T}) where {T}
     return combined_scalars, refs
 end
 function set_scalar_constants!(ex::ParametricExpression{T}, x, refs) where {T}
+    x = Base.unalias(get_metadata(ex).parameters, x)
     # First, set the usual constants
     set_scalar_constants!(
         get_tree(ex), @view(x[1:(refs.num_constants)]), refs.constant_refs
