@@ -196,6 +196,25 @@ end
     @test ok == expected_ok
 end
 
+@testitem "Feature indices beyond the input rows throw" begin
+    using DynamicExpressions, LoopVectorization, Bumper
+
+    operators = OperatorEnum(1 => (exp,), 2 => (+,))
+    x3 = Node{Float64}(; feature=3)
+    X = [1.0 2.0 3.0; 4.0 5.0 6.0]
+    for tree in (
+        x3,
+        Node(; op=1, children=(x3, Node{Float64}(; val=2.0))),
+        Node(; op=1, children=(Node(; op=1, children=(x3,)),)),
+    )
+        for turbo in (false, true), bumper in (false, true), use_fused in (false, true)
+            eval_context = EvalContext(; turbo, bumper, use_fused)
+            @test_throws BoundsError eval_tree_array(tree, X, operators; eval_context)
+        end
+        @test_throws BoundsError eval_tree_array(tree, [1.0, 2.0], operators)
+    end
+end
+
 @testitem "Test specific branches of evaluation" begin
     using DynamicExpressions, DynamicExpressions, Bumper, LoopVectorization
     using DynamicExpressions.EvaluateModule: EvalContext

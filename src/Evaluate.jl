@@ -298,6 +298,8 @@ function eval_tree_array(
             "Bumper and LoopVectorization features are only compatible with numeric element types",
         )
     end
+    # Kernels read features without bounds checks.
+    foreach(t -> t.degree == 0 && !t.constant && checkbounds(cX, t.feature, :), tree)
     if _eval_context.bumper isa Val{true}
         return bumper_eval_tree_array(tree, cX, operators, _eval_context)
     end
