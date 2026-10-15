@@ -377,7 +377,7 @@ function eval_tree_array(
     kws...,
 ) where {T}
     @assert length(classes) == size(X, 2)
-    @assert maximum(classes) <= size(ex.metadata.parameters, 2)  # TODO: Remove when comfortable
+    @assert isempty(classes) || maximum(classes) <= size(ex.metadata.parameters, 2)  # TODO: Remove when comfortable
     parameters = ex.metadata.parameters
     indexed_parameters = [
         parameters[i_parameter, classes[i_row]] for

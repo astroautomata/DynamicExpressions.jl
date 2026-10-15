@@ -1,3 +1,22 @@
+@testitem "Parametric evaluation accepts zero samples" begin
+    using DynamicExpressions
+
+    operators = OperatorEnum(1 => (identity,), 2 => (+,); define_helper_functions=false)
+    parameter = ParametricNode{Float64}(; feature=1)
+    parameter.is_parameter = true
+    parameter.parameter = 1
+    feature = ParametricNode{Float64}(; feature=1)
+    for tree in (
+        ParametricNode(; val=2.0),
+        feature,
+        parameter,
+        ParametricNode(; op=1, children=(feature, parameter)),
+    )
+        ex = ParametricExpression(tree; operators, parameters=[10.0 20.0])
+        @test eval_tree_array(ex, zeros(1, 0), Int[]) == (Float64[], true)
+        @test ex(zeros(1, 0), Int[]) == Float64[]
+    end
+end
 @testitem "Conversion should not change metadata" begin
     using DynamicExpressions
 
