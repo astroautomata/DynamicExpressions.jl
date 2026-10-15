@@ -177,13 +177,14 @@ function leaf_hash(h::UInt, t::ParametricNode)
     end
 end
 function leaf_equal(a::ParametricNode, b::ParametricNode)
+    a.constant != b.constant && return false
     if a.constant
-        return b.constant && a.val == b.val
+        return a.val == b.val
     else
         if a.is_parameter
             return b.is_parameter && a.parameter == b.parameter
         else
-            return a.feature == b.feature
+            return !b.is_parameter && a.feature == b.feature
         end
     end
 end

@@ -1,3 +1,37 @@
+@testitem "Parametric leaf equality respects active tags" begin
+    using DynamicExpressions
+    using DynamicExpressions.ParametricExpressionModule: set_leaf!
+
+    feature = ParametricNode{Float64}(; feature=1)
+    constant = ParametricNode{Float64}(; feature=1)
+    set_leaf!(constant, ParametricNode(; val=2.0))
+    parameter = ParametricNode{Float64}(; feature=1)
+    parameter.is_parameter = true
+    parameter.parameter = 1
+    tagged_constant = copy(parameter)
+    set_leaf!(tagged_constant, ParametricNode(; val=2.0))
+    leaves = (feature, constant, parameter, tagged_constant)
+    for a in leaves, b in leaves
+        @test (a == b) == (b == a)
+        @test (a == b) == (
+            a.constant == b.constant && (
+                if a.constant
+                    a.val == b.val
+                else
+                    a.is_parameter == b.is_parameter && (
+                        if a.is_parameter
+                            a.parameter == b.parameter
+                        else
+                            a.feature == b.feature
+                        end
+                    )
+                end
+            )
+        )
+        a == b && @test hash(a) == hash(b)
+    end
+end
+
 @testitem "Conversion should not change metadata" begin
     using DynamicExpressions
 
