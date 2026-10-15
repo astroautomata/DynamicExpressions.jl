@@ -74,7 +74,7 @@ function apply_operator(op::F, args::Vararg{Any,D}) where {F<:Function,D}
         if allow_chaining(op) && D > 2
             # These operators might get chained by Julia, so we check
             # downward for any matching arity.
-            inner = apply_operator(op, args[1:(end - 1)]...)
+            inner = op(args[1:(end - 1)]...)
             return apply_operator(op, inner, args[end])
         end
         throw(
