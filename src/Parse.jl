@@ -13,6 +13,7 @@ using ..ExpressionModule:
     get_variable_names,
     node_type
 using ..ExpressionAlgebraModule: declare_operator_alias
+using ..StringsModule: get_op_name
 
 """
     @parse_expression(expr; operators, variable_names, node_type=Node, evaluate_on=[])
@@ -304,7 +305,8 @@ Throws appropriate errors for ambiguous or missing matches.
 
     for arity in 1:length(operators.ops)
         for op in operators.ops[arity]
-            if nameof(op) == func_symbol
+            name = op isa Broadcast.BroadcastFunction ? Symbol(get_op_name(op)) : nameof(op)
+            if name == func_symbol
                 push!(matches, (op, arity))
             end
         end
@@ -383,6 +385,12 @@ end
     eval_module::Union{Nothing,Module};
     kws...,
 ) where {N<:AbstractExpressionNode,E<:AbstractExpression}
+    if ex.head == :. &&
+        length(ex.args) == 2 &&
+        ex.args[2] isa Expr &&
+        ex.args[2].head == :tuple
+        ex = Expr(:call, Symbol(string(ex.args[1], '.')), ex.args[2].args...)
+    end
     ex.head != :call && throw(
         ArgumentError(
             "Unrecognized expression type: `Expr(:$(ex.head), ...)`. " *
