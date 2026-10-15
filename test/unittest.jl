@@ -34,6 +34,27 @@ end
     include("test_chainrules.jl")
 end
 
+@testitem "Empty sample pullback" begin
+    using ChainRulesCore: ChainRulesCore, NoTangent
+
+    operators = OperatorEnum(; binary_operators=(+,))
+    x = Node{Float64}(; feature=1)
+    c = Node{Float64}(; val=2.0)
+    for tree in (c, x, Node{Float64}(; op=1, children=(c, x)))
+        X = zeros(1, 0)
+        (values, complete), pullback = ChainRulesCore.rrule(
+            eval_tree_array, tree, X, operators
+        )
+        @test isempty(values) && complete
+        dfunction, dtree, dX, doperators = pullback((Float64[], NoTangent()))
+        @test dfunction == NoTangent()
+        @test doperators == NoTangent()
+        @test dtree.tree === tree
+        @test dtree.gradient == zeros(length(first(get_scalar_constants(tree))))
+        @test size(dX) == size(X)
+    end
+end
+
 @testitem "Test undefined derivatives" begin
     include("test_undefined_derivatives.jl")
 end

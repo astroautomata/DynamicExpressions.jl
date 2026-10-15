@@ -13,7 +13,7 @@ using ..OperatorEnumModule: OperatorEnum
 using ..NodeModule: AbstractExpressionNode, with_type_parameters, tree_mapreduce
 using ..EvaluateModule: eval_tree_array
 using ..EvaluateDerivativeModule: eval_grad_tree_array
-using ..UtilsModule: set_invalid!
+using ..UtilsModule: set_invalid!, fill_similar
 
 struct NodeTangent{T,N<:AbstractExpressionNode{T},A<:AbstractArray{T}} <: AbstractTangent
     tree::N
@@ -68,9 +68,12 @@ function (e::EvalPullback)((thunked_dY, _))
     dX_dY = @view dX_constants_dY[1:nfeatures, :]
     dconstants_dY = @view dX_constants_dY[(nfeatures + 1):end, :]
 
-    dtree = NodeTangent(
-        e.tree, sum(j -> dconstants_dY[:, j] * dY[j], eachindex(dY, axes(dconstants_dY, 2)))
-    )
+    dconstants = if isempty(dY)
+        fill_similar(zero(eltype(dconstants_dY)), dconstants_dY, axes(dconstants_dY, 1))
+    else
+        sum(j -> dconstants_dY[:, j] * dY[j], eachindex(dY, axes(dconstants_dY, 2)))
+    end
+    dtree = NodeTangent(e.tree, dconstants)
 
     dX = dX_dY .* reshape(dY, 1, length(dY))
 
