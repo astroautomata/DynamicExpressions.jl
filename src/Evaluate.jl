@@ -347,8 +347,10 @@ function _eval_tree_array(
         return deg0_eval(tree, cX, eval_context)
     elseif is_constant(tree)
         # Speed hack for constant trees.
-        const_result = dispatch_constant_tree(tree, operators)::ResultOk{T}
-        !const_result.ok &&
+        const_result =
+            dispatch_constant_tree(tree, operators, eval_context.early_exit)::ResultOk{T}
+        eval_context.early_exit isa Val{true} &&
+            !const_result.ok &&
             return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
         return ResultOk(
             get_filled_array(eval_context.buffer, const_result.x, cX, axes(cX, 2)), true
@@ -994,14 +996,15 @@ function deg2_r0_eval(
 end
 
 """
-    dispatch_constant_tree(tree::AbstractExpressionNode{T}, operators::OperatorEnum) where {T}
+    dispatch_constant_tree(tree::AbstractExpressionNode{T}, operators::OperatorEnum, early_exit::Val=Val(true))
 
 Evaluate a tree which is assumed to not contain any variable nodes. This
 gives better performance, as we do not need to perform computation
-over an entire array when the values are all the same.
+over an entire array when the values are all the same. With `early_exit=Val(false)`,
+invalid intermediate values do not stop the evaluation.
 """
 @generated function dispatch_constant_tree(
-    tree::AbstractExpressionNode{T,D}, operators::OperatorEnum
+    tree::AbstractExpressionNode{T,D}, operators::OperatorEnum, early_exit::Val=Val(true)
 ) where {T,D}
     quote
         deg = tree.degree
@@ -1010,7 +1013,7 @@ over an entire array when the values are all the same.
             $D,
             i -> i == deg,  # COV_EXCL_LINE
             i -> begin  # COV_EXCL_LINE
-                inner_dispatch_degn_eval_constant(tree, Val(i), operators)
+                inner_dispatch_degn_eval_constant(tree, Val(i), operators, early_exit)
             end,
         )
     end
@@ -1018,7 +1021,7 @@ end
 
 # Now that we have the degree, we can get the operator
 @generated function inner_dispatch_degn_eval_constant(
-    tree::AbstractExpressionNode{T}, ::Val{degree}, operators::OperatorEnum
+    tree::AbstractExpressionNode{T}, ::Val{degree}, operators::OperatorEnum, early_exit::Val
 ) where {T,degree}
     nops = get_nops(operators, Val(degree))
     get_inputs = quote
@@ -1026,10 +1029,10 @@ end
         Base.Cartesian.@nexprs(  # COV_EXCL_LINE
             $degree,
             i -> begin  # COV_EXCL_LINE
-                input_i = let result = dispatch_constant_tree(cs[i], operators)
-                    !result.ok && return result
-                    result.x
-                end
+                input_i = let result = dispatch_constant_tree(cs[i], operators, early_exit)
+                        early_exit isa Val{true} && !result.ok && return result
+                        result.x
+                    end
             end
         )
         inputs = Base.Cartesian.@ntuple($degree, i -> input_i)
