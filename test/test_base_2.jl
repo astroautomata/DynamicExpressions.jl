@@ -131,3 +131,18 @@ end
     @test_throws ArgumentError Node{Float64}(; r=x)
     @test_throws ArgumentError Node{Float64}(; op=1, r=x, children=(x,))
 end
+
+@testitem "Graph node correspondence" begin
+    OperatorEnum(2 => (+, *))
+    x1, x2 = (GraphNode{Float64}(; feature=i) for i in 1:2)
+    y1, y2 = (GraphNode{Float64}(; feature=i) for i in 1:2)
+    a = GraphNode{Float64}(;
+        op=1, children=(GraphNode{Float64}(; op=2, children=(x1, x2)), x1)
+    )
+    b = GraphNode{Float64}(;
+        op=1, children=(GraphNode{Float64}(; op=2, children=(y1, y2)), y2)
+    )
+    @test !(a == b)
+    @test !(b == a)
+    @test a == copy_node(a)
+end

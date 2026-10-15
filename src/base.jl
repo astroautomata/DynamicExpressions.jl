@@ -195,7 +195,7 @@ function Base.:(==)(a::AbstractExpressionNode, b::AbstractExpressionNode)
 end
 function Base.:(==)(a::N, b::N)::Bool where {N<:AbstractExpressionNode}
     if preserve_sharing(N)
-        return inner_is_equal(a, b, (; a=Dict{UInt,Nothing}(), b=Dict{UInt,Nothing}()))
+        return inner_is_equal(a, b, (; a=Dict{UInt,UInt}(), b=Dict{UInt,UInt}()))
     else
         return inner_is_equal(a, b, nothing)
     end
@@ -210,7 +210,7 @@ end
             has_a = haskey(id_maps.a, ids.a)
             has_b = haskey(id_maps.b, ids.b)
             if has_a && has_b
-                return true
+                return id_maps.a[ids.a] == ids.b && id_maps.b[ids.b] == ids.a
             elseif has_a ⊻ has_b
                 return false
             end
@@ -237,8 +237,8 @@ end
             )
         end
         if !isnothing(ids)
-            id_maps.a[ids.a] = nothing
-            id_maps.b[ids.b] = nothing
+            id_maps.a[ids.a] = ids.b
+            id_maps.b[ids.b] = ids.a
         end
         return result
     end
