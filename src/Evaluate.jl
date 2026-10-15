@@ -73,7 +73,7 @@ end
 
 function get_array(buffer::ArrayBuffer{<:AbstractMatrix}, template::AbstractArray, axes...)
     i = next_index!(buffer)
-    out = @view(buffer.array[i, :])
+    out = @view(buffer.array[i, axes...])
     return out
 end
 
@@ -90,32 +90,14 @@ end
 function get_filled_array(::Nothing, value, template::AbstractArray, axes...)
     return fill_similar(value, template, axes...)
 end
-function get_filled_array(
-    buffer::ArrayBuffer{<:AbstractMatrix}, value, template::AbstractArray, axes...
-)
-    i = next_index!(buffer)
-    @inbounds buffer.array[i, :] .= value
-    return @view(buffer.array[i, :])
-end
-function get_filled_array(
-    buffer::ArrayBuffer{<:Vector}, value, template::AbstractArray, axes...
-)
+function get_filled_array(buffer::ArrayBuffer, value, template::AbstractArray, axes...)
     return fill!(get_array(buffer, template, axes...), value)
 end
 
 function get_feature_array(::Nothing, X::AbstractMatrix, feature::Integer)
     return @inbounds(X[feature, :])
 end
-function get_feature_array(
-    buffer::ArrayBuffer{<:AbstractMatrix}, X::AbstractMatrix, feature::Integer
-)
-    i = next_index!(buffer)
-    @inbounds buffer.array[i, :] .= X[feature, :]
-    return @view(buffer.array[i, :])
-end
-function get_feature_array(
-    buffer::ArrayBuffer{<:Vector}, X::AbstractMatrix, feature::Integer
-)
+function get_feature_array(buffer::ArrayBuffer, X::AbstractMatrix, feature::Integer)
     out = get_array(buffer, X, axes(X, 2))
     @inbounds copyto!(out, @view(X[feature, :]))
     return out

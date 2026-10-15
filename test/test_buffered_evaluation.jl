@@ -197,3 +197,34 @@ end
         @test ok1 == ok2
     end
 end
+
+@testitem "Matrix buffers of the wrong size" begin
+    using DynamicExpressions
+    using DynamicExpressions: ArrayBuffer
+
+    operators = OperatorEnum(; binary_operators=[+])
+    x1, x2 = Node(Float64; feature=1), Node(Float64; feature=2)
+    c = Node(Float64; val=2.0)
+    X = [1.0 2.0; 3.0 4.0]
+    for tree in
+        (x1, c, Node(; op=1, l=x1, r=c), Node(; op=1, l=Node(; op=1, l=x1, r=x2), r=x1))
+        expected = eval_tree_array(tree, X, operators)
+        for use_fused in (false, true)
+            wide = ArrayBuffer(zeros(5, 3), Ref(0))
+            eval_context = EvalContext(; buffer=wide, use_fused)
+            @test eval_tree_array(tree, X, operators; eval_context) == expected
+
+            narrow = ArrayBuffer(zeros(5, 1), Ref(0))
+            eval_context = EvalContext(; buffer=narrow, use_fused)
+            @test_throws BoundsError eval_tree_array(tree, X, operators; eval_context)
+        end
+    end
+
+    # Too few rows must throw before writing outside the buffer.
+    storage = fill(7.0, 3, 1)
+    buffer = ArrayBuffer(view(storage, 1:2, :), Ref(0))
+    tree = Node(; op=1, l=Node(; op=1, l=x1, r=x2), r=x1)
+    eval_context = EvalContext(; buffer, use_fused=false)
+    @test_throws BoundsError eval_tree_array(tree, [1.0; 2.0;;], operators; eval_context)
+    @test storage[3, 1] == 7.0
+end
