@@ -8,7 +8,6 @@
     using DynamicExpressions:
         string_tree, parse_expression, eval_tree_array, Node, get_operators, get_tree
     using LoopVectorization: LoopVectorization
-    using Bumper: Bumper
 
     # Bring the generator into scope
     include("supposition_utils.jl")
@@ -44,14 +43,13 @@
     # Helper function to create clean argument generators
     function clean_args_gen_maker(default_turbo)
         args_gen = map(
-            (ex, X, turbo, bumper) -> let
-                result, ok = eval_tree_array(ex, X; turbo=Val(turbo), bumper=Val(bumper))
-                (; ex, X, turbo, bumper, result, ok)
+            (ex, X, turbo) -> let
+                result, ok = eval_tree_array(ex, X; turbo=Val(turbo))
+                (; ex, X, turbo, result, ok)
             end,
             expr_gen,
             input_gen,
             map(_ -> default_turbo, Data.Booleans()),
-            Data.Booleans(),
         )
         # We only consider expressions that don't have NaN/Inf/etc.
         return filter(args -> args.ok, args_gen)
@@ -80,7 +78,7 @@
     end
 
     # Helper function to evaluate expression against its string representation
-    function _eval_against_string((; ex, X, turbo, bumper, result))
+    function _eval_against_string((; ex, X, turbo, result))
         tree_str = string_tree(ex)
         true_result = if turbo
             # Turbo changes the operators, so we need to use a different function

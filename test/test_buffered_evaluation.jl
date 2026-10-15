@@ -22,11 +22,6 @@
     @test copied_buffer.index[] == buffer_ref[]
     @test copied_buffer.index !== buffer_ref
 
-    # Test buffer is not allowed with bumper
-    @test_throws AssertionError EvalContext(;
-        bumper=true, buffer=ArrayBuffer(buffer, buffer_ref)
-    )
-
     # Basic evaluation should work
     result = eval_tree_array(tree, X, operators; eval_context)
     @test length(result) == 2  # Returns (output, ok)

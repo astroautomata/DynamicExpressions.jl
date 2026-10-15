@@ -10,7 +10,7 @@ end
 end
 
 # Trigger extensions:
-using Zygote, SymbolicUtils, LoopVectorization, Bumper, Optim
+using Zygote, SymbolicUtils, LoopVectorization, Optim
 
 @safetestset "Test deprecations" begin
     include("test_deprecations.jl")

@@ -53,14 +53,6 @@ function _zygote_gradient(args...)
 end
 function _zygote_gradient_impl end
 
-function bumper_eval_tree_array(args...)
-    is_extension_loaded(Val(:Bumper)) ||
-        error("Please load the Bumper.jl package to use this feature.")
-    return _bumper_eval_tree_array(args...)
-end
-function _bumper_eval_tree_array end
-function bumper_kern! end
-
 _is_loopvectorization_loaded(_) = false  # COV_EXCL_LINE
 
 end

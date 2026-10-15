@@ -17,7 +17,6 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 [weakdeps]
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
-Bumper = "8ce10254-0962-460f-a3d8-1f77fea1446e"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 NLSolversBase = "d41bc354-129a-5804-8e4c-c37616107c6c"
@@ -25,7 +24,6 @@ SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [extensions]
-DynamicExpressionsBumperExt = "Bumper"
 DynamicExpressionsDistributedExt = ["Distributed", "Serialization"]
 DynamicExpressionsLoopVectorizationExt = "LoopVectorization"
 DynamicExpressionsOptimExt = ["Optim", "NLSolversBase"]
@@ -33,7 +31,6 @@ DynamicExpressionsSymbolicUtilsExt = "SymbolicUtils"
 DynamicExpressionsZygoteExt = "Zygote"
 
 [compat]
-Bumper = "0.6"
 ChainRulesCore = "1.25.1"
 Compat = "4.16"
 Distributed = "1"
@@ -53,7 +50,6 @@ Random = "1"
 TOML = "1"
 
 [extras]
-Bumper = "8ce10254-0962-460f-a3d8-1f77fea1446e"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 NLSolversBase = "d41bc354-129a-5804-8e4c-c37616107c6c"

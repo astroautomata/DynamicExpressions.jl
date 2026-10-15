@@ -1,6 +1,6 @@
 #! format: off
 @testitem "Test validity of expression evaluation" begin
-using DynamicExpressions, Bumper, LoopVectorization, Random
+using DynamicExpressions, LoopVectorization, Random
 
 include("test_params.jl")
 include("tree_gen_utils.jl")
@@ -49,12 +49,11 @@ functions = [
 ]
 
 for turbo in [Val(false), Val(true)],
-    T in [Float16, Float32, Float64, ComplexF32, ComplexF64],
-    bumper in [Val(false), Val(true)]
+    T in [Float16, Float32, Float64, ComplexF32, ComplexF64]
 
     # Float16 not implemented:
-    (turbo isa Val{true} || bumper isa Val{true}) && !(T in (Float32, Float64)) && continue
-    @testset "Test evaluation of trees with turbo=$turbo, bumper=$bumper, T=$T" begin
+    turbo isa Val{true} && !(T in (Float32, Float64)) && continue
+    @testset "Test evaluation of trees with turbo=$turbo, T=$T" begin
         for (i_func, fnc) in enumerate(functions)
 
             # check if fnc is tuple
@@ -78,14 +77,14 @@ for turbo in [Val(false), Val(true)],
             true_y = realfnc.(X[1, :], X[2, :], X[3, :])
             !all(isfinite.(true_y)) && continue
 
-            @inferred eval_tree_array(tree, X, operators; turbo, bumper)
+            @inferred eval_tree_array(tree, X, operators; turbo)
 
-            test_y = eval_tree_array(tree, X, operators; turbo, bumper)[1]
+            test_y = eval_tree_array(tree, X, operators; turbo)[1]
 
             zero_tolerance = (T <: Union{Float16,Complex} ? 1e-4 : 1e-6)
             @test all(abs.(test_y .- true_y) / N .< zero_tolerance)
 
-            test_y_helper = tree(X, operators; turbo, bumper)
+            test_y_helper = tree(X, operators; turbo)
             @test all(test_y .== test_y_helper)
         end
     end
@@ -197,7 +196,7 @@ end
 end
 
 @testitem "Test specific branches of evaluation" begin
-    using DynamicExpressions, DynamicExpressions, Bumper, LoopVectorization
+    using DynamicExpressions, DynamicExpressions, LoopVectorization
     using DynamicExpressions.EvaluateModule: EvalContext
 
     include("test_params.jl")
@@ -351,7 +350,7 @@ end
 
 @testitem "Disable early exit" begin
     using DynamicExpressions
-    using Bumper, LoopVectorization
+    using LoopVectorization
 
     let
         T = Float16
@@ -363,10 +362,7 @@ end
         @test ex(X; eval_context=EvalContext(; early_exit=Val(false))) ≈ [2.0, Inf]
     end
 
-    for turbo in [Val(false), Val(true)],
-        T in [Float32, Float64],
-        bumper in [Val(false), Val(true)]
-
+    for turbo in [Val(false), Val(true)], T in [Float32, Float64]
         ex = @parse_expression(
             (-b - sqrt(b^2 - (4 * a) * c)) / (2 * c),
             binary_operators = [-, *, /, ^],
@@ -379,8 +375,8 @@ end
             1 floatmax(T)
             1 1
         ]
-        @test all(isnan.(ex(X; eval_context=EvalContext(; bumper, turbo))))
-        y = ex(X; eval_context=EvalContext(; bumper, turbo, early_exit=Val(false)))
+        @test all(isnan.(ex(X; eval_context=EvalContext(; turbo))))
+        y = ex(X; eval_context=EvalContext(; turbo, early_exit=Val(false)))
         @test y[1] ≈ T(-1.618033988749895)
         @test !isfinite(y[2])
     end
@@ -503,4 +499,20 @@ end
     @test out[1] == 3
 
     # Matrix{Int} promotion path is already exercised above
+end
+
+@testitem "bumper=true evaluates like bumper=false" begin
+    using DynamicExpressions, LoopVectorization
+
+    operators = OperatorEnum(1 => (cos,), 2 => (+, *))
+    x1, x2 = Node{Float64}(; feature=1), Node{Float64}(; feature=2)
+    X = [1.0 2.0 3.0; 4.0 5.0 6.0]
+    for tree in (x1 + x2, cos(x1 * 2.0), (x1 * x2) + x1, cos(x1) + cos(x2)),
+        turbo in (false, true)
+
+        expected = eval_tree_array(tree, X, operators; eval_context=EvalContext(; turbo))
+        @test eval_tree_array(
+            tree, X, operators; eval_context=EvalContext(; turbo, bumper=true)
+        ) == expected
+    end
 end
