@@ -142,9 +142,7 @@ This holds evaluation policy and call-scoped mutable state.
     result in the second return value, the completion flag, being `false`. For 
     calling an expression using `tree(X)`, this fills the entire buffer with
     `invalid_value(T)`, which defaults to NaN for floating-point types.
-    Setting `Val{false}` disables early termination. Unary fused kernels still
-    propagate invalid intermediates without calling the outer operator; use
-    `use_fused=false` if that operator should recover invalid values.
+    Setting `Val{false}` disables early termination.
 - `buffer::Union{ArrayBuffer,Nothing}`: If not `nothing`, use this buffer for evaluation.
     This should be an instance of `ArrayBuffer` which has an `array` field and an
     `index` field used to iterate which buffer slot to use. The buffer creator must
@@ -699,6 +697,7 @@ function deg1_l2_ll0_lr0_eval(
     eval_context::EvalContext{false,false},
 ) where {T,F,F2}
     index_style = IndexStyle(typeof(cX))
+    early_exit = eval_context.early_exit isa Val{true}
     if get_child(get_child(tree, 1), 1).constant &&
         get_child(get_child(tree, 1), 2).constant
         val_ll = get_child(get_child(tree, 1), 1).val
@@ -720,7 +719,7 @@ function deg1_l2_ll0_lr0_eval(
         @inbounds @simd for j in axes(cX, 2)
             x_l =
                 op_l(val_ll, feature_at(cX, input_lr_index, feature_lr, j, index_style))::T
-            x = is_valid(x_l) ? op(x_l)::T : x_l
+            x = early_exit && !is_valid(x_l) ? x_l : op(x_l)::T
             cumulator[j] = x
             input_lr_index += feature_stride
         end  # COV_EXCL_LINE
@@ -735,7 +734,7 @@ function deg1_l2_ll0_lr0_eval(
         @inbounds @simd for j in axes(cX, 2)
             x_l =
                 op_l(feature_at(cX, input_ll_index, feature_ll, j, index_style), val_lr)::T
-            x = is_valid(x_l) ? op(x_l)::T : x_l
+            x = early_exit && !is_valid(x_l) ? x_l : op(x_l)::T
             cumulator[j] = x
             input_ll_index += feature_stride
         end  # COV_EXCL_LINE
@@ -752,7 +751,7 @@ function deg1_l2_ll0_lr0_eval(
                 feature_at(cX, input_ll_index, feature_ll, j, index_style),
                 feature_at(cX, input_lr_index, feature_lr, j, index_style),
             )::T
-            x = is_valid(x_l) ? op(x_l)::T : x_l
+            x = early_exit && !is_valid(x_l) ? x_l : op(x_l)::T
             cumulator[j] = x
             input_ll_index += feature_stride
             input_lr_index += feature_stride
@@ -770,6 +769,7 @@ function deg1_l1_ll0_eval(
     eval_context::EvalContext{false,false},
 ) where {T,F,F2}
     index_style = IndexStyle(typeof(cX))
+    early_exit = eval_context.early_exit isa Val{true}
     if get_child(get_child(tree, 1), 1).constant
         val_ll = get_child(get_child(tree, 1), 1).val
         @return_on_nonfinite_val(eval_context, val_ll, cX)
@@ -785,7 +785,7 @@ function deg1_l1_ll0_eval(
         cumulator = get_array(eval_context.buffer, cX, axes(cX, 2))
         @inbounds @simd for j in axes(cX, 2)
             x_l = op_l(feature_at(cX, input_ll_index, feature_ll, j, index_style))::T
-            x = is_valid(x_l) ? op(x_l)::T : x_l
+            x = early_exit && !is_valid(x_l) ? x_l : op(x_l)::T
             cumulator[j] = x
             input_ll_index += feature_stride
         end  # COV_EXCL_LINE

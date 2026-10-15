@@ -196,6 +196,22 @@ end
     @test ok == expected_ok
 end
 
+@testitem "early_exit=false applies outer operators to invalid intermediates" begin
+    using DynamicExpressions, LoopVectorization
+
+    operators = OperatorEnum(1 => (inv,), 2 => (/,))
+    x1 = Node{Float64}(; feature=1)
+    c1 = Node{Float64}(; val=1.0)
+    X = [0.0 1.0 2.0]
+    for tree in (inv(inv(x1)), inv(c1 / x1))
+        for turbo in (false, true), use_fused in (false, true)
+            eval_context = EvalContext(; turbo, use_fused, early_exit=false)
+            @test eval_tree_array(tree, X, operators; eval_context) ==
+                ([0.0, 1.0, 2.0], true)
+        end
+    end
+end
+
 @testitem "Test specific branches of evaluation" begin
     using DynamicExpressions, DynamicExpressions, Bumper, LoopVectorization
     using DynamicExpressions.EvaluateModule: EvalContext
