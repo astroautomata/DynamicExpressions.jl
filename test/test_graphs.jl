@@ -248,12 +248,11 @@ end
         end
         @test c == [tree, x, x]
 
-        # Note that iterate always turns on `break_sharing`!
         c = typeof(x)[]
         for n in tree
             push!(c, n)
         end
-        @test c == [tree, x, x]
+        @test c == [tree, x]
         @test length(tree) == 2
         @test length(tree; break_sharing=Val(true)) == 3
         @test map(t -> t.degree == 0 ? 1 : 0, tree) == [0, 1]

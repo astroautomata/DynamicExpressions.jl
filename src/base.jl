@@ -449,7 +449,7 @@ end
 
 isempty(::AbstractNode) = false  # COV_EXCL_LINE
 function iterate(root::AbstractNode)
-    return (root, collect(root; break_sharing=Val(true))[(begin + 1):end])
+    return (root, collect(root)[(begin + 1):end])
 end
 @unstable iterate(::AbstractNode, stack) =
     isempty(stack) ? nothing : (popfirst!(stack), stack)
