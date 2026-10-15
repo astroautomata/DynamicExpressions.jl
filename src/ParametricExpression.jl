@@ -267,6 +267,11 @@ function get_scalar_constants(ex::ParametricExpression{T}) where {T}
     return combined_scalars, refs
 end
 function set_scalar_constants!(ex::ParametricExpression{T}, x, refs) where {T}
+    length(x) != refs.num_constants + refs.num_parameters && throw(
+        DimensionMismatch(
+            "Expected $(refs.num_constants + refs.num_parameters) scalar constants, got $(length(x))",
+        ),
+    )
     # First, set the usual constants
     set_scalar_constants!(
         get_tree(ex), @view(x[1:(refs.num_constants)]), refs.constant_refs

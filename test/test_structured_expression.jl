@@ -1,3 +1,19 @@
+@testitem "Structured scalar setters require exact length" begin
+    using DynamicExpressions
+
+    inner = ParametricExpression(
+        ParametricNode{Float64}(; feature=1); operators=nothing, parameters=[10.0 20.0]
+    )
+    ex = StructuredExpression((; inner); structure=nt -> nt.inner)
+    old, refs = get_scalar_constants(ex)
+    for input in (Float64[], [1.0], [1.0, 2.0, 3.0])
+        @test_throws DimensionMismatch set_scalar_constants!(ex, input, refs)
+        @test first(get_scalar_constants(ex)) == old
+    end
+    @test set_scalar_constants!(ex, [1.0, 2.0], refs) === ex
+    @test first(get_scalar_constants(ex)) == [1.0, 2.0]
+end
+
 @testitem "StructuredExpression basics" begin
     using DynamicExpressions
 

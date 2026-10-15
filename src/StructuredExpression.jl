@@ -160,6 +160,11 @@ function get_scalar_constants(e::AbstractStructuredExpression)
     return flat_constants, refs
 end
 function set_scalar_constants!(e::AbstractStructuredExpression, constants, refs)
+    length(constants) != sum(r -> r.n, refs) && throw(
+        DimensionMismatch(
+            "Expected $(sum(r -> r.n, refs)) scalar constants, got $(length(constants))"
+        ),
+    )
     cursor = Ref(1)
     foreach(values(get_contents(e)), refs) do tree, r
         n = r.n

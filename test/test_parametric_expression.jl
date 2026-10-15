@@ -1,3 +1,19 @@
+@testitem "Parametric scalar setters require exact length" begin
+    using DynamicExpressions
+
+    for tree in (ParametricNode{Float64}(; feature=1), ParametricNode(; val=3.0))
+        ex = ParametricExpression(tree; operators=nothing, parameters=[10.0 20.0])
+        old, refs = get_scalar_constants(ex)
+        for x in (Float64[], old[1:(end - 1)], vcat(old, 4.0))
+            @test_throws DimensionMismatch set_scalar_constants!(ex, x, refs)
+            @test first(get_scalar_constants(ex)) == old
+        end
+        replacement = reverse(old)
+        @test set_scalar_constants!(ex, replacement, refs) === ex
+        @test first(get_scalar_constants(ex)) == replacement
+    end
+end
+
 @testitem "Conversion should not change metadata" begin
     using DynamicExpressions
 
