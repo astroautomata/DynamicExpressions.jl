@@ -131,3 +131,14 @@ end
     @test_throws ArgumentError Node{Float64}(; r=x)
     @test_throws ArgumentError Node{Float64}(; op=1, r=x, children=(x,))
 end
+
+@testitem "Constructor degree inference" begin
+    for D in (1, 3), N in (Node, GraphNode)
+        x = N{Float64,D}(; feature=1)
+        for cs in ((x,), ntuple(_ -> x, D), [x])
+            n = N(; op=1, children=cs)
+            @test typeof(n) === typeof(x)
+            @test get_children(n, length(cs)) == Tuple(cs)
+        end
+    end
+end

@@ -407,12 +407,22 @@ end
 @inline function node_factory(
     ::Type{N}, ::Type, ::Nothing, ::Nothing, op::Integer, children::Union{Tuple,AbstractVector}, allocator::F,
 ) where {N<:AbstractExpressionNode,F}
-    T = defines_eltype(N) ? eltype(N) : promote_type(map(eltype, children)...)
+    T = if defines_eltype(N)
+        eltype(N)
+    elseif children isa AbstractVector && isconcretetype(eltype(children))
+        eltype(eltype(children))
+    else
+        promote_type(map(eltype, children)...)
+    end
     defines_eltype(N) && @assert T === promote_type(T, map(eltype, children)...)
     D2 = length(children)
-    @assert D2 <= max_degree(N)
-    NT = with_type_parameters(N, T)
-    n = allocator(N, T)
+    NT = if has_max_degree(N) || children isa Tuple{}
+        N
+    else
+        with_max_degree(N, Val(max_degree(eltype(children))))
+    end
+    @assert D2 <= max_degree(NT)
+    n = allocator(NT, T)
     n.degree = D2
     n.op = op
     set_children!(n, children)
