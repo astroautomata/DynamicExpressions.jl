@@ -1,7 +1,7 @@
 module DynamicExpressionsLoopVectorizationExt
 
 using LoopVectorization: @turbo
-using DynamicExpressions: AbstractExpressionNode
+using DynamicExpressions: AbstractExpressionNode, is_valid
 using DynamicExpressions.NodeModule: get_child
 using DynamicExpressions.UtilsModule: ResultOk
 using DynamicExpressions.EvaluateModule:
@@ -132,6 +132,11 @@ function deg2_branch0_eval(
     elseif eval_context.early_exit isa Val{true} && leaf2.constant && !isfinite(leaf2.val)
         return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
     elseif eval_context.early_exit isa Val{true} && leaf3.constant && !isfinite(leaf3.val)
+        return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
+    elseif eval_context.early_exit isa Val{true} &&
+        get_child(branch, 1).constant &&
+        get_child(branch, 2).constant &&
+        !is_valid(branch_op(get_child(branch, 1).val, get_child(branch, 2).val)::T)
         return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
     end
 
