@@ -285,18 +285,18 @@ function eval_tree_array(
     _deprecated_kws...,
 ) where {T}
     _eval_context = _process_deprecated_kws(eval_context, _deprecated_kws)
+    if (_eval_context.turbo isa Val{true} || _eval_context.bumper isa Val{true}) &&
+        !(T <: Number)
+        error(
+            "Bumper and LoopVectorization features are only compatible with numeric element types",
+        )
+    end
     if _eval_context.turbo isa Val{true} || _eval_context.bumper isa Val{true}
         @assert T in (Float32, Float64)
     end
     if _eval_context.turbo isa Val{true}
         _is_loopvectorization_loaded(0) ||
             error("Please load the LoopVectorization.jl package to use this feature.")
-    end
-    if (_eval_context.turbo isa Val{true} || _eval_context.bumper isa Val{true}) &&
-        !(T <: Number)
-        error(
-            "Bumper and LoopVectorization features are only compatible with numeric element types",
-        )
     end
     if _eval_context.bumper isa Val{true}
         return bumper_eval_tree_array(tree, cX, operators, _eval_context)
