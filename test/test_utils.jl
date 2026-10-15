@@ -40,15 +40,3 @@ set_scalar_constants!(tree, [1.0, 2.0], [Ref(tree.l.r), Ref(tree.r.l.r)])
 x = randn(Float32, 3, 10)
 @inferred fill_similar(0.5f0, x, axes(x, 1))
 fill_similar(0.5f0, x, axes(x, 1)) == fill(0.5f0, 3)
-
-@testset "Array validity is elementwise" begin
-    VI = DynamicExpressions.ValueInterfaceModule
-    for T in (Float16, Float32, Float64, ComplexF64)
-        large = T <: Complex ? T(floatmax(Float64)) : floatmax(T)
-        @test VI.is_valid_array([large, large])
-        @test VI.is_valid_array(T[])
-        for bad in (Inf, -Inf, NaN)
-            @test !VI.is_valid_array(T[1, bad])
-        end
-    end
-end

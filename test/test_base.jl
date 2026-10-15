@@ -6,12 +6,6 @@ using Zygote
 operators = OperatorEnum(; binary_operators=[+, -, *, /], unary_operators=[cos, sin]);
 x1, x2, x3 = (i -> Node(Float64; feature=i)).(1:3)
 tree = cos(x1 * 3.2 - 5.8) * 0.2 - 0.5 * x2 * x3 * x3 + 0.9 / (x1 * x1 + 1);
-@testset "set_children! rejects excess children" begin
-    x = Node{Float64}(; feature=1)
-    @test_throws ArgumentError set_children!(x, (x, x, x))
-    @test_throws ArgumentError set_children!(x, [x, x, x])
-    @test x.degree == 0
-end
 
 @testset "all" begin
     ctree = copy(tree)

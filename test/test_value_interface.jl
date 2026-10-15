@@ -40,3 +40,15 @@ end
     @test DynamicExpressions.ValueInterfaceModule._check_unpack_scalar_constants("hello") ==
         false
 end
+
+@testitem "Array validity is elementwise" begin
+    VI = DynamicExpressions.ValueInterfaceModule
+    for T in (Float16, Float32, Float64, ComplexF64)
+        large = T <: Complex ? T(floatmax(Float64)) : floatmax(T)
+        @test VI.is_valid_array([large, large])
+        @test VI.is_valid_array(T[])
+        for bad in (Inf, -Inf, NaN)
+            @test !VI.is_valid_array(T[1, bad])
+        end
+    end
+end
