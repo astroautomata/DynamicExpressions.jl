@@ -129,7 +129,7 @@ function set_scalar_constants!(tree::AbstractExpressionNode{T}, constants, refs)
     else
         nums_i = 1
         refs_i = 1
-        while nums_i <= length(constants) && refs_i <= length(refs)
+        while refs_i <= length(refs)
             ix, v = unpack_scalar_constants(constants, nums_i, refs[refs_i][].val::T)
             refs[refs_i][].val = v
             nums_i = ix
