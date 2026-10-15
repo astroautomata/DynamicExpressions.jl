@@ -131,3 +131,14 @@ end
     @test_throws ArgumentError Node{Float64}(; r=x)
     @test_throws ArgumentError Node{Float64}(; op=1, r=x, children=(x,))
 end
+
+@testitem "Graph conversion removes sharing" begin
+    x = GraphNode{Float64}(; feature=1)
+    shared = GraphNode{Float64}(; op=1, children=(x, x))
+    t = GraphNode{Float64}(; op=1, children=(shared, shared))
+    for N in (Node, Node{Float32}, Node{Float64})
+        c = convert(N, t)
+        @test length(unique(map(objectid, c))) == length(c)
+        @test get_child(c, 1) !== get_child(c, 2)
+    end
+end

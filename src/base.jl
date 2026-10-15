@@ -548,7 +548,8 @@ function convert(
         identity,
         (p, children...) -> branch_convert(N1, p, children...),
         tree,
-        N1,
+        N1;
+        break_sharing=Val(!preserve_sharing(N1)),
     )
     # TODO: Need to allow user to overload this!
 end
