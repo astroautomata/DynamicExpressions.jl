@@ -131,3 +131,8 @@ end
     @test_throws ArgumentError Node{Float64}(; r=x)
     @test_throws ArgumentError Node{Float64}(; op=1, r=x, children=(x,))
 end
+
+@testitem "Equality across different maximum degrees" begin
+    @test !(Node{Float64,1}(; feature=1) == Node{Float64,2}(; feature=1))
+    @test !(GraphNode{Float64,1}(; feature=1) == GraphNode{Float64,2}(; feature=1))
+end

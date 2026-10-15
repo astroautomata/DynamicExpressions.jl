@@ -191,6 +191,7 @@ By using this instead of tree_mapreduce, we can take advantage of early exits.
 end
 
 function Base.:(==)(a::AbstractExpressionNode, b::AbstractExpressionNode)
+    max_degree(a) != max_degree(b) && return false
     return Base.:(==)(promote(a, b)...)
 end
 function Base.:(==)(a::N, b::N)::Bool where {N<:AbstractExpressionNode}
@@ -249,7 +250,7 @@ end
 end
 @inline function leaf_equal(
     a::AbstractExpressionNode{T1}, b::AbstractExpressionNode{T2}
-) where {T1,T2}
+)::Bool where {T1,T2}
     constant = a.constant
     constant != b.constant && return false
     if constant
