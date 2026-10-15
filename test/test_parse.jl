@@ -378,6 +378,32 @@ end
     @test_throws LoadError @eval @parse_expression(x, variable_names = [:x], bad_arg = true)
 end
 
+@testitem "StringsParse macro diagnostics list all accepted keywords" begin
+    using DynamicExpressions
+    using Test
+    accepted = (
+        :operators,
+        :variable_names,
+        :node_type,
+        :expression_type,
+        :evaluate_on,
+        :eval_module,
+        :extra_metadata,
+        :binary_operators,
+        :unary_operators,
+    )
+    for kws in ((:bogus,), (:binary_operators, :bogus), (:unary_operators, :bogus, :other))
+        err = try
+            DynamicExpressions.ParseModule._parse_kws(kws)
+        catch error
+            error
+        end
+        @test err isa ArgumentError
+        message = sprint(showerror, err)
+        @test occursin("bogus", message)
+        @test all(kw -> occursin(string(kw), message), accepted)
+    end
+end
 @testitem "Call function explicitly to get coverage" begin
     import DynamicExpressions as DE
     operators = DE.OperatorEnum(; binary_operators=[+, *], unary_operators=[sin])
