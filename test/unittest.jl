@@ -30,6 +30,35 @@ end
     include("test_derivatives.jl")
 end
 
+@testitem "Zero requested gradients" begin
+    using DynamicExpressions: eval_grad_tree_array
+    using DispatchDoctor: allow_unstable
+
+    operators = OperatorEnum(; binary_operators=(+,))
+    x = Node{Float64}(; feature=1)
+    c = Node{Float64}(; val=2.0)
+    X = ones(1, 2)
+    X0 = zeros(0, 2)
+    for input in (X, view(X, :, :), transpose(permutedims(X)))
+        for tree in (x, Node{Float64}(; op=1, children=(x, x)))
+            values, gradient, complete = allow_unstable() do
+                eval_grad_tree_array(tree, input, operators; variable=false)
+            end
+            @test complete
+            @test size(gradient) == (0, 2)
+            @test values == fill(tree.degree == 0 ? 1.0 : 2.0, 2)
+        end
+    end
+    for input in (X0, view(X0, :, :), transpose(permutedims(X0)))
+        values, gradient, complete = allow_unstable() do
+            eval_grad_tree_array(c, input, operators; variable=true)
+        end
+        @test complete
+        @test size(gradient) == (0, 2)
+        @test values == fill(2.0, 2)
+    end
+end
+
 @testitem "Test chain rules" begin
     include("test_chainrules.jl")
 end
