@@ -211,6 +211,23 @@ end
     end
 end
 
+@testitem "early_exit=false evaluates invalid constant subtrees" begin
+    using DynamicExpressions, LoopVectorization
+
+    operators = OperatorEnum(1 => (inv,), 2 => (+,))
+    u(a) = Node(; op=1, children=(a,))
+    x1 = Node{Float64}(; feature=1)
+    c0 = Node{Float64}(; val=0.0)
+    X = [0.0 1.0 2.0]
+    for (tree, expected) in
+        ((Node(; op=1, children=(x1, u(u(c0)))), [0.0, 1.0, 2.0]), (u(u(c0)), zeros(3)))
+        for turbo in (false, true), use_fused in (false, true)
+            eval_context = EvalContext(; turbo, use_fused, early_exit=false)
+            @test eval_tree_array(tree, X, operators; eval_context) == (expected, true)
+        end
+    end
+end
+
 @testitem "Invalid constant leaves fail evaluation on zero samples" begin
     using DynamicExpressions, LoopVectorization
 
