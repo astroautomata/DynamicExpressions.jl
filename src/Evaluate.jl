@@ -1083,9 +1083,10 @@ function deg0_diff_eval(
     tree::AbstractExpressionNode{T1}, cX::AbstractMatrix{T}, operators::OperatorEnum
 )::ResultOk where {T<:Number,T1}
     if tree.constant
-        ResultOk(fill_similar(one(T), cX, axes(cX, 2)) .* tree.val, true)
+        ResultOk(fill_similar(one(T), cX, axes(cX, 2)) .* tree.val, is_valid(tree.val))
     else
-        ResultOk(cX[tree.feature, :], true)
+        out = cX[tree.feature, :]
+        ResultOk(out, is_valid_array(out))
     end
 end
 

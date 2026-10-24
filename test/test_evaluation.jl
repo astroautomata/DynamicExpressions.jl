@@ -278,6 +278,17 @@ end
     end
 end
 
+@testitem "differentiable_eval_tree_array flags invalid leaves" begin
+    using DynamicExpressions
+
+    operators = OperatorEnum(1 => (-,), 2 => (+,))
+    x1 = Node{Float64}(; feature=1)
+    for (tree, X) in ((Node{Float64}(; val=NaN), [0.0;;]), (x1, [1.0 NaN]), (x1, [1.0 Inf]))
+        @test !differentiable_eval_tree_array(tree, X, operators)[2]
+    end
+    @test differentiable_eval_tree_array(x1, [1.0 2.0], operators) == ([1.0, 2.0], true)
+end
+
 @testitem "Test specific branches of evaluation" begin
     using DynamicExpressions, DynamicExpressions, LoopVectorization
     using DynamicExpressions.EvaluateModule: EvalContext
