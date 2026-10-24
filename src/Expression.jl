@@ -272,7 +272,7 @@ end
 function get_tree(tree::AbstractExpressionNode)
     return tree
 end
-function Base.copy(ex::Expression; break_sharing::Val=Val(false))
+@inline function Base.copy(@nospecialize(ex::Expression); break_sharing::Val=Val(false))
     return Expression(copy(ex.tree; break_sharing), copy(ex.metadata))
 end
 function Base.hash(ex::AbstractExpression, h::UInt)
@@ -361,8 +361,8 @@ This method unpacks the operators and variable names from the expression and cal
 
 """
 function string_tree(
-    ex::AbstractExpression,
-    operators::Union{AbstractOperatorEnum,Nothing}=nothing;
+    @nospecialize(ex::AbstractExpression),
+    @nospecialize(operators::Union{AbstractOperatorEnum,Nothing} = nothing);
     variable_names=nothing,
     kws...,
 )
@@ -376,8 +376,8 @@ end
 for io in ((), (:(io::IO),))
     @eval function print_tree(
         $(io...),
-        ex::AbstractExpression,
-        operators::Union{AbstractOperatorEnum,Nothing}=nothing;
+        @nospecialize(ex::AbstractExpression),
+        @nospecialize(operators::Union{AbstractOperatorEnum,Nothing} = nothing);
         variable_names=nothing,
         kws...,
     )
@@ -385,7 +385,7 @@ for io in ((), (:(io::IO),))
     end
 end
 
-function Base.show(io::IO, ex::AbstractExpression)
+Base.@nospecializeinfer function Base.show(io::IO, @nospecialize(ex::AbstractExpression))
     return print(io, string_tree(ex))
 end
 

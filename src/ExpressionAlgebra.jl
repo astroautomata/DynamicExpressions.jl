@@ -9,21 +9,53 @@ using ..ExpressionModule:
     with_contents,
     constructorof
 
-function insert_operator_index(
-    op::Integer, exprs::Tuple, example_expr::E
+# The `@nospecialize` + `@inline` methods below keep precise inference for typed callers
+# (which inline them), while calls from untyped code reuse one precompiled method
+# instead of compiling a specialization for every operator set.
+@inline function insert_operator_index(
+    op::Integer,
+    @nospecialize(exprs::Tuple),
+    @nospecialize(example_expr::AbstractExpression)
+)
+    N, T = node_and_value_types(example_expr)
+    return _insert_operator_index(op, exprs, example_expr, N, T)
+end
+function node_and_value_types(
+    ::E
 ) where {T,N<:AbstractExpressionNode{T},E<:AbstractExpression{T,N}}
-    _exprs = map(exprs) do expr
-        if expr isa AbstractExpression
-            # Assume the contents are an expression; otherwise, this
-            # needs a custom method!
-            expr
-        else
-            with_contents(copy(example_expr), constructorof(N)(T; val=expr)::N)
-        end
+    return (N, T)
+end
+@inline function _insert_operator_index(
+    op::Integer,
+    @nospecialize(exprs::Tuple),
+    @nospecialize(example_expr::AbstractExpression),
+    ::Type{N},
+    ::Type{T},
+) where {T,N<:AbstractExpressionNode{T}}
+    first_expr = _as_expression(exprs[1], example_expr, N, T)
+    num_exprs = length(exprs)
+    trees_vec = Vector{N}(undef, num_exprs)
+    trees_vec[1] = get_contents(first_expr)::N
+    for i in 2:num_exprs
+        trees_vec[i] = get_contents(_as_expression(exprs[i], example_expr, N, T))::N
     end
-    trees = map(get_contents, _exprs)::NTuple{length(_exprs),N}
+    trees = ntuple(i -> trees_vec[i], num_exprs)
     output_tree = constructorof(N)(; children=trees, op)::N
-    return with_contents(first(_exprs), output_tree)
+    return with_contents(first_expr, output_tree)
+end
+@inline function _as_expression(
+    @nospecialize(expr),
+    @nospecialize(example_expr::AbstractExpression),
+    ::Type{N},
+    ::Type{T},
+) where {T,N<:AbstractExpressionNode{T}}
+    if expr isa AbstractExpression
+        # Assume the contents are an expression; otherwise, this
+        # needs a custom method!
+        return expr
+    else
+        return with_contents(copy(example_expr), constructorof(N)(T; val=expr)::N)
+    end
 end
 
 struct MissingOperatorError
@@ -52,23 +84,37 @@ Which would allow a user to write `sqrt(x::Expression)`
 and have it match the operator `safe_sqrt` stored in the binary operators
 of the expression.
 """
-declare_operator_alias(op::F, _) where {F} = op
+declare_operator_alias(@nospecialize(op), _) = op
 
 allow_chaining(@nospecialize(op)) = false
 allow_chaining(::typeof(+)) = true
 allow_chaining(::typeof(*)) = true
 
-function apply_operator(op::F, args::Vararg{Any,D}) where {F<:Function,D}
-    idx = findfirst(e -> e isa AbstractExpression, args)::Int
-    example_expr = args[idx]
+@inline function apply_operator(@nospecialize(op::Function), @nospecialize(args...))
+    D = length(args)
+    idx = nothing
+    for i in 1:D
+        if args[i] isa AbstractExpression
+            idx = i
+            break
+        end
+    end
+    example_expr = args[idx::Int]::AbstractExpression
     E = typeof(example_expr)
-    @assert all(e -> !(e isa AbstractExpression) || typeof(e) === E, args)
+    for arg in args
+        @assert !(arg isa AbstractExpression) || typeof(arg) === E
+    end
     operators = get_operators(example_expr, nothing)
 
-    op_idx = if length(operators) >= D
-        findfirst(==(op), map(Base.Fix2(declare_operator_alias, Val(D)), operators[D]))
-    else
-        nothing
+    op_idx = nothing
+    if length(operators) >= D
+        degree_ops = operators[D]
+        for i in 1:length(degree_ops)
+            if declare_operator_alias(degree_ops[i], Val(D)) == op
+                op_idx = i
+                break
+            end
+        end
     end
     if isnothing(op_idx)
         if allow_chaining(op) && D > 2
@@ -99,12 +145,15 @@ of arguments the operator takes.
 macro declare_expression_operator(op, arity)
     syms = [Symbol('x', i) for i in 1:arity]
     AE = :($(AbstractExpression))
+    # Untyped calls reuse one precompiled method per wrapper; typed callers inline the
+    # wrapper so that `apply_operator` is inferred and compiled for their concrete types.
+    macrocall(name, arg) = Expr(:macrocall, GlobalRef(Base, name), __source__, arg)
+    nospecialize(arg) = macrocall(Symbol("@nospecialize"), arg)
+    inline(fn) = macrocall(Symbol("@inline"), fn)
     if arity == 1
-        return esc(
-            quote
-                $op($(only(syms))::$(AE)) = $(apply_operator)($op, $(only(syms)))
-            end,
-        )
+        return esc(inline(:(function $op($(nospecialize(:($(only(syms))::$(AE)))))
+            return $(apply_operator)($op, $(only(syms)))
+        end)))
     end
 
     wrappers = (AE, :($(AE){T}), :T, :Number)
@@ -130,7 +179,13 @@ macro declare_expression_operator(op, arity)
             continue
         end
 
-        arglist = [Expr(:(::), syms[i], types[i]) for i in 1:arity]
+        arglist = [
+            if t == AE || (t isa Expr && t.head == :curly && t.args[1] == AE)
+                nospecialize(Expr(:(::), s, t))
+            else
+                Expr(:(::), s, t)
+            end for (s, t) in zip(syms, types)
+        ]
         signature = Expr(:call, op, arglist...)
         if any(t -> t == :T || (t isa Expr && t.head == :curly && :T in t.args), types)
             signature = Expr(:where, signature, :(T))
@@ -140,7 +195,7 @@ macro declare_expression_operator(op, arity)
 
         fn = Expr(:function, signature, body)
 
-        push!(methods.args, fn)
+        push!(methods.args, inline(fn))
     end
 
     return esc(methods)

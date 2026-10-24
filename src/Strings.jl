@@ -1,6 +1,6 @@
 module StringsModule
 
-using ..UtilsModule: deprecate_varmap
+using ..UtilsModule: deprecate_varmap, nif_expr
 using ..OperatorEnumModule: AbstractOperatorEnum
 using ..NodeModule: AbstractExpressionNode, tree_mapreduce, max_degree
 
@@ -18,39 +18,51 @@ function dispatch_op_name(
     ), collect(string(idx)), [']'])
 end
 function dispatch_op_name(
-    ::Val{deg}, operators::AbstractOperatorEnum, idx, pretty::Bool
+    ::Val{deg}, @nospecialize(operators::AbstractOperatorEnum), idx, pretty::Bool
 ) where {deg}
     op = operators[deg][idx]
     return collect((pretty ? get_pretty_op_name(op) : get_op_name(op))::String)
 end
 
-struct OpNameDispatcher{D,O<:Union{AbstractOperatorEnum,Nothing}} <: Function
-    operators::O
+# Names are looked up once per distinct operator, since the lookup is dynamically
+# dispatched to avoid compiling it for every operator set.
+struct OpNameDispatcher{D} <: Function
+    operators::Union{AbstractOperatorEnum,Nothing}
     pretty::Bool
+    names::Dict{Tuple{Int,Int},Vector{Char}}
 end
-@generated function (f::OpNameDispatcher{D,O})(branch) where {D,O}
+function OpNameDispatcher{D}(
+    @nospecialize(operators::Union{AbstractOperatorEnum,Nothing}), pretty::Bool
+) where {D}
+    return OpNameDispatcher{D}(operators, pretty, Dict{Tuple{Int,Int},Vector{Char}}())
+end
+@generated function (f::OpNameDispatcher{D})(branch) where {D}
     return quote
         degree = branch.degree
-        Base.Cartesian.@nif(
-            $D,
-            d -> d == degree,  # COV_EXCL_LINE
-            d -> begin  # COV_EXCL_LINE
-                dispatch_op_name(Val(d), f.operators, branch.op, f.pretty)
-            end,
-        )::Vector{Char}
+        key = (Int(degree), Int(branch.op))
+        name = get(f.names, key, nothing)
+        if name === nothing
+            name = $(nif_expr(
+                D,
+                :degree,
+                d -> :(dispatch_op_name(Val($d), f.operators, branch.op, f.pretty)),
+            ))::Vector{Char}
+            f.names[key] = name
+        end
+        return name
     end
 end
 
 const OP_NAME_CACHE = (; x=Dict{UInt64,String}(), lock=Threads.SpinLock())
 
-function get_op_name(op::F) where {F}
+function get_op_name(@nospecialize(op))
     # Only singleton callables have a fixed name.
-    Base.issingletontype(F) && return @lock OP_NAME_CACHE.lock get!(
+    Base.issingletontype(typeof(op)) && return @lock OP_NAME_CACHE.lock get!(
         () -> _get_op_name(op), OP_NAME_CACHE.x, objectid(op)
     )
     return _get_op_name(op)
 end
-function _get_op_name(op)
+function _get_op_name(@nospecialize(op))
     if op isa Broadcast.BroadcastFunction
         base_op_s = string(op.f)
         if length(base_op_s) == 1 && first(base_op_s) in ('+', '-', '*', '/', '^')
@@ -64,7 +76,7 @@ function _get_op_name(op)
         return string(op)
     end
 end
-function get_pretty_op_name(op::F) where {F}
+function get_pretty_op_name(@nospecialize(op))
     return get_op_name(op)
 end
 
@@ -154,9 +166,9 @@ Convert an equation to a string.
 - `f_constant`: (optional) function to convert a constant to a string, with arguments `(val,)`
 - `variable_names::Union{Array{String, 1}, Nothing}=nothing`: (optional) what variables to print for each feature.
 """
-function string_tree(
+Base.@nospecializeinfer function string_tree(
     tree::AbstractExpressionNode{T},
-    operators::Union{AbstractOperatorEnum,Nothing}=nothing;
+    @nospecialize(operators::Union{AbstractOperatorEnum,Nothing} = nothing);
     f_variable::F1=string_variable,
     f_constant::F2=string_constant,
     variable_names=nothing,
@@ -181,7 +193,7 @@ function string_tree(
                 collect(f_variable(leaf.feature, variable_names))::Vector{Char}
             end
         end,
-        OpNameDispatcher{max_degree(tree),typeof(operators)}(operators, pretty),
+        OpNameDispatcher{max_degree(tree)}(operators, pretty),
         combine_op_with_inputs,
         tree,
         Vector{Char};
@@ -202,7 +214,7 @@ for io in ((), (:(io::IO),))
     @eval function print_tree(
         $(io...),
         tree::AbstractExpressionNode,
-        operators::Union{AbstractOperatorEnum,Nothing}=nothing;
+        @nospecialize(operators::Union{AbstractOperatorEnum,Nothing} = nothing);
         f_variable::F1=string_variable,
         f_constant::F2=string_constant,
         variable_names=nothing,
