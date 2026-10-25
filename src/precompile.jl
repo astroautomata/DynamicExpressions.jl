@@ -140,6 +140,72 @@ function test_functions_on_trees(::Type{T}, operators) where {T}
     return nothing
 end
 
+"""Construct operator enums with helper functions, then restore the global state this sets."""
+function test_operator_enum_construction(unary_operators, binary_operators)
+    (; LATEST_OPERATORS, LATEST_OPERATORS_TYPE, LATEST_OPERATOR_MAPPING) =
+        OperatorEnumConstructionModule
+    latest_operators = LATEST_OPERATORS.x
+    latest_operators_type = LATEST_OPERATORS_TYPE.x
+    mapping = Dict(k => copy(v) for (k, v) in LATEST_OPERATOR_MAPPING)
+
+    pairs = Base.inferencebarrier((1 => unary_operators, 2 => binary_operators))
+    OperatorEnum(pairs...)
+    GenericOperatorEnum(pairs...; define_helper_functions=false)
+    precompile(GenericOperatorEnum, map(typeof, pairs))
+
+    LATEST_OPERATORS.x = latest_operators
+    LATEST_OPERATORS_TYPE.x = latest_operators_type
+    for k in collect(keys(LATEST_OPERATOR_MAPPING))
+        haskey(mapping, k) || delete!(LATEST_OPERATOR_MAPPING, k)
+    end
+    for (k, v) in mapping
+        merge!(empty!(LATEST_OPERATOR_MAPPING[k]), v)
+    end
+    return nothing
+end
+
+"""
+Precompile the runtime-dispatched calls that record operators in the global mappings.
+"""
+function precompile_operator_mappings()
+    (; ALREADY_DEFINED_OPERATORS, OP_FIELDTYPE) = OperatorEnumConstructionModule
+    precompile(haskey, (Dict{Any,Bool}, Function))
+    for defined in values(ALREADY_DEFINED_OPERATORS.operator_enum[Number]),
+        func in keys(defined)
+
+        precompile(setindex!, (Dict{Any,OP_FIELDTYPE}, Int, typeof(func)))
+    end
+    return nothing
+end
+
+"""
+Precompile the macros still used in generated function bodies, such as the derivative
+evaluators.
+"""
+function precompile_generated_function_macros()
+    C = Base.Cartesian
+    precompile(C.var"@nexprs", (LineNumberNode, Module, Int, Expr))
+    precompile(C.var"@ntuple", (LineNumberNode, Module, Int, Any))
+    if isdefined(C, :lreplace!) && isdefined(C, :LReplace) && C.LReplace isa UnionAll
+        precompile(C.lreplace!, (QuoteNode, C.LReplace{String}))
+    end
+    return nothing
+end
+
+function test_functions_on_expressions(::Type{T}, operators) where {T}
+    variable_names = ["x1", "x2"]
+    x1 = Base.inferencebarrier(Expression(Node{T}(; feature=1); operators, variable_names))
+    x2 = Base.inferencebarrier(Expression(Node{T}(; feature=2); operators, variable_names))
+    ex = x1 * cos(x2 - T(3.2))
+    ex = 2.0 * sin(ex) / 1 + (x1 - 0.5) + (1 - x2)
+    ex = copy(ex)
+    ex(rand(T, 2, 10))
+    repr(ex)
+    string_tree(ex; pretty=true)
+    string_tree(Base.inferencebarrier(Expression(Node{T}(; feature=1); operators)))
+    return nothing
+end
+
 macro maybe_setup_workload(mode, ex)
     precompile_ex = Expr(
         :macrocall, Symbol("@setup_workload"), LineNumberNode(@__LINE__), ex
@@ -174,7 +240,7 @@ end
 function do_precompilation(; mode=:precompile)
     @maybe_setup_workload mode begin
         binary_operators = ((+, -, *, /),)
-        unary_operators = ((sin, cos),)
+        unary_operators = ((sin, cos), (exp, log, sqrt, abs))
         turbo = (Val(false),)
         types = (Float32, Float64)
         @maybe_compile_workload mode begin
@@ -185,6 +251,11 @@ function do_precompilation(; mode=:precompile)
                 types=types,
             )
         end
+        @maybe_compile_workload mode begin
+            test_operator_enum_construction(unary_operators[1], binary_operators[1])
+        end
+        precompile_operator_mappings()
+        precompile_generated_function_macros()
         operators = OperatorEnum(
             1 => unary_operators[1], 2 => binary_operators[1]; define_helper_functions=false
         )
@@ -193,6 +264,7 @@ function do_precompilation(; mode=:precompile)
         for T in types
             @maybe_compile_workload mode begin
                 test_functions_on_trees(T, operators)
+                test_functions_on_expressions(T, operators)
             end
         end
     end

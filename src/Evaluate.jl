@@ -6,7 +6,7 @@ import ..NodeModule:
     AbstractExpressionNode, constructorof, get_children, get_child, with_type_parameters
 import ..StringsModule: string_tree
 import ..OperatorEnumModule: AbstractOperatorEnum, OperatorEnum, GenericOperatorEnum
-import ..UtilsModule: fill_similar, counttuple, ResultOk
+import ..UtilsModule: fill_similar, counttuple, ResultOk, nif_expr
 import ..NodeUtilsModule: is_constant
 import ..ExtensionInterfaceModule: _is_loopvectorization_loaded
 import ..ValueInterfaceModule: is_valid, is_valid_array
@@ -19,14 +19,6 @@ macro return_on_nonfinite_val(eval_context, val, X)
             return $(ResultOk)(
                 get_array($(esc(eval_context)).buffer, $(esc(X)), axes($(esc(X)), 2)), false
             )
-        end
-    )
-end
-
-macro return_on_nonfinite_array(eval_context, array)
-    :(
-        if $(esc(eval_context)).early_exit isa Val{true} && !is_valid_array($(esc(array)))
-            return $(ResultOk)($(esc(array)), false)
         end
     )
 end
@@ -335,20 +327,18 @@ function _eval_tree_array(
     end
 end
 
-@generated function degn_eval(
+function degn_eval(
     cumulators::NTuple{N,<:AbstractVector{T}}, op::F, ::EvalContext{false}
 )::ResultOk where {N,T,F}
     # Fast general implementation of `cumulators[1] .= op.(cumulators[1], cumulators[2], ...)`
-    quote
-        Base.Cartesian.@nexprs($N, i -> cumulator_i = cumulators[i])
-        @inbounds @simd for j in eachindex(cumulator_1)
-            cumulator_1[j] = Base.Cartesian.@ncall($N, op, i -> cumulator_i[j])::T
-        end  # COV_EXCL_LINE
-        return ResultOk(cumulator_1, true)
-    end
+    cumulator_1 = first(cumulators)
+    @inbounds @simd for j in eachindex(cumulator_1)
+        cumulator_1[j] = op(map(cumulator -> @inbounds(cumulator[j]), cumulators)...)::T
+    end  # COV_EXCL_LINE
+    return ResultOk(cumulator_1, true)
 end
 
-function deg2_eval(
+@noinline function deg2_eval(
     cumulator_l::AbstractVector{T},
     cumulator_r::AbstractVector{T},
     op::F,
@@ -357,7 +347,7 @@ function deg2_eval(
     return degn_eval((cumulator_l, cumulator_r), op, eval_context)
 end
 
-function deg1_eval(
+@noinline function deg1_eval(
     cumulator::AbstractVector{T}, op::F, eval_context::EvalContext
 )::ResultOk where {T,F}
     return degn_eval((cumulator,), op, eval_context)
@@ -398,6 +388,16 @@ end
     return Core.Compiler.return_type(deg0_eval, typeof((tree, cX, eval_context)))
 end
 
+function eval_child_expr(result::Symbol, child)
+    return quote
+        $result = _eval_tree_array($child, cX, operators, eval_context)
+        !$result.ok && return $result
+        if eval_context.early_exit isa Val{true} && !is_valid_array($result.x)
+            return ResultOk($result.x, false)
+        end
+    end
+end
+
 # This basically forms an if statement over the operators for the degree.
 function inner_dispatch_degn_eval(
     tree::AbstractExpressionNode{T},
@@ -418,25 +418,19 @@ end
     eval_context::EvalContext,
 ) where {T,degree,O<:OperatorEnum}
     nops = get_nops(O, Val(degree))
+    results = [Symbol(:result_, i) for i in 1:degree]
     return quote
         cs = get_children(tree, Val($degree))
-        Base.Cartesian.@nexprs(  # COV_EXCL_LINE
-            $degree,
-            i -> begin  # COV_EXCL_LINE
-                result_i = _eval_tree_array(cs[i], cX, operators, eval_context)
-                !result_i.ok && return result_i
-                @return_on_nonfinite_array(eval_context, result_i.x)
-            end
-        )
+        $((eval_child_expr(results[i], :(cs[$i])) for i in 1:degree)...)
         op_idx = tree.op
-        cumulators = Base.Cartesian.@ntuple($degree, i -> result_i.x)
-        Base.Cartesian.@nif(
-            $nops,
-            i -> i == op_idx,  # COV_EXCL_LINE
-            i -> begin  # COV_EXCL_LINE
-                degn_eval(cumulators, get_op(operators, Val($degree), Val(i)), eval_context)
-            end,
-        )
+        cumulators = ($((:($result.x) for result in results)...),)
+        $(nif_expr(
+            nops,
+            :op_idx,
+            i -> :(degn_eval(
+                cumulators, get_op(operators, Val($degree), Val($i)), eval_context
+            )),
+        ))
     end
 end
 
@@ -450,13 +444,11 @@ end
     return quote
         # If statement over degrees
         degree = tree.degree
-        return Base.Cartesian.@nif(
-            $D,
-            d -> d == degree,  # COV_EXCL_LINE
-            d -> begin  # COV_EXCL_LINE
-                inner_dispatch_degn_eval(tree, cX, Val(d), operators, eval_context)
-            end,
-        )
+        return $(nif_expr(
+            D,
+            :degree,
+            d -> :(inner_dispatch_degn_eval(tree, cX, Val($d), operators, eval_context)),
+        ))
     end
 end
 @generated function dispatch_deg2_eval(
@@ -471,82 +463,76 @@ end
     supports_branch_fusion = T <: Number
     if long_compilation_time
         return quote
-            result_l = _eval_tree_array(get_child(tree, 1), cX, operators, eval_context)
-            !result_l.ok && return result_l
-            @return_on_nonfinite_array(eval_context, result_l.x)
-            result_r = _eval_tree_array(get_child(tree, 2), cX, operators, eval_context)
-            !result_r.ok && return result_r
-            @return_on_nonfinite_array(eval_context, result_r.x)
+            $(eval_child_expr(:result_l, :(get_child(tree, 1))))
+            $(eval_child_expr(:result_r, :(get_child(tree, 2))))
             # op(x, y), for any x or y
             deg2_eval(result_l.x, result_r.x, operators.binops[op_idx], eval_context)
         end
     end
     return quote
         fused = use_fused(eval_context)
-        return Base.Cartesian.@nif(
-            $nbin,
-            i -> i == op_idx,  # COV_EXCL_LINE
-            i -> let op = operators.binops[i]  # COV_EXCL_LINE
-                if fused && get_child(tree, 1).degree == 0 && get_child(tree, 2).degree == 0
-                    deg2_l0_r0_eval(tree, cX, op, eval_context)
-                elseif fused && get_child(tree, 2).degree == 0
-                    left = get_child(tree, 1)
-                    if $supports_branch_fusion &&
-                        left.degree == 2 &&
-                        get_child(left, 1).degree == 0 &&
-                        get_child(left, 2).degree == 0
-                        dispatch_deg2_branch0_eval(
-                            tree,
-                            cX,
-                            op,
-                            left.op,
-                            operators.binops,
-                            Val(:left),
-                            eval_context,
-                        )
-                    else
-                        result_l = _eval_tree_array(left, cX, operators, eval_context)
-                        !result_l.ok && return result_l
-                        @return_on_nonfinite_array(eval_context, result_l.x)
-                        # op(x, y), where y is a constant or variable but x is not.
-                        deg2_r0_eval(tree, result_l.x, cX, op, eval_context)
-                    end
-                elseif fused && get_child(tree, 1).degree == 0
-                    right = get_child(tree, 2)
-                    if $supports_branch_fusion &&
-                        right.degree == 2 &&
-                        get_child(right, 1).degree == 0 &&
-                        get_child(right, 2).degree == 0
-                        dispatch_deg2_branch0_eval(
-                            tree,
-                            cX,
-                            op,
-                            right.op,
-                            operators.binops,
-                            Val(:right),
-                            eval_context,
-                        )
-                    else
-                        result_r = _eval_tree_array(right, cX, operators, eval_context)
-                        !result_r.ok && return result_r
-                        @return_on_nonfinite_array(eval_context, result_r.x)
-                        # op(x, y), where x is a constant or variable but y is not.
-                        deg2_l0_eval(tree, result_r.x, cX, op, eval_context)
-                    end
-                else
-                    result_l = _eval_tree_array(get_child(tree, 1), cX, operators, eval_context)
-                    !result_l.ok && return result_l
-                    @return_on_nonfinite_array(eval_context, result_l.x)
-                    result_r = _eval_tree_array(
-                        get_child(tree, 2), cX, operators, eval_context
-                    )
-                    !result_r.ok && return result_r
-                    @return_on_nonfinite_array(eval_context, result_r.x)
-                    # op(x, y), for any x or y
-                    deg2_eval(result_l.x, result_r.x, op, eval_context)
-                end
+        binops = operators.binops
+        left = get_child(tree, 1)
+        right = get_child(tree, 2)
+        if fused && left.degree == 0 && right.degree == 0
+            return $(nif_expr(
+                nbin, :op_idx, i -> :(deg2_l0_r0_eval(tree, cX, binops[$i], eval_context))
+            ))
+        elseif fused && right.degree == 0
+            if $supports_branch_fusion &&
+                left.degree == 2 &&
+                get_child(left, 1).degree == 0 &&
+                get_child(left, 2).degree == 0
+                return $(nif_expr(
+                    nbin,
+                    :op_idx,
+                    i -> :(dispatch_deg2_branch0_eval(
+                        tree, cX, binops[$i], left.op, binops, Val(:left), eval_context
+                    )),
+                ))
             end
-        )
+            $(eval_child_expr(:result_l, :left))
+            # op(x, y), where y is a constant or variable but x is not.
+            return $(nif_expr(
+                nbin,
+                :op_idx,
+                i -> :(deg2_r0_eval(tree, result_l.x, cX, binops[$i], eval_context)),
+            ))
+        elseif fused && left.degree == 0
+            if $supports_branch_fusion &&
+                right.degree == 2 &&
+                get_child(right, 1).degree == 0 &&
+                get_child(right, 2).degree == 0
+                return $(nif_expr(
+                    nbin,
+                    :op_idx,
+                    i -> :(dispatch_deg2_branch0_eval(
+                        tree,
+                        cX,
+                        binops[$i],
+                        right.op,
+                        binops,
+                        Val(:right),
+                        eval_context,
+                    )),
+                ))
+            end
+            $(eval_child_expr(:result_r, :right))
+            # op(x, y), where x is a constant or variable but y is not.
+            return $(nif_expr(
+                nbin,
+                :op_idx,
+                i -> :(deg2_l0_eval(tree, result_r.x, cX, binops[$i], eval_context)),
+            ))
+        end
+        $(eval_child_expr(:result_l, :left))
+        $(eval_child_expr(:result_r, :right))
+        # op(x, y), for any x or y
+        return $(nif_expr(
+            nbin,
+            :op_idx,
+            i -> :(deg2_eval(result_l.x, result_r.x, binops[$i], eval_context)),
+        ))
     end
 end
 
@@ -560,15 +546,11 @@ end
     eval_context::EvalContext,
 ) where {T,F,side}
     nbin = counttuple(binops)
-    quote
-        Base.Cartesian.@nif(
-            $nbin,
-            i -> i == branch_op_idx,  # COV_EXCL_LINE
-            i -> begin  # COV_EXCL_LINE
-                deg2_branch0_eval(tree, cX, op, binops[i], side_val, eval_context)
-            end,
-        )
-    end
+    return nif_expr(
+        nbin,
+        :branch_op_idx,
+        i -> :(deg2_branch0_eval(tree, cX, op, binops[$i], side_val, eval_context)),
+    )
 end
 @generated function dispatch_deg1_eval(
     tree::AbstractExpressionNode{T},
@@ -581,46 +563,41 @@ end
     long_compilation_time = nuna > OPERATOR_LIMIT_BEFORE_SLOWDOWN
     if long_compilation_time
         return quote
-            result = _eval_tree_array(get_child(tree, 1), cX, operators, eval_context)
-            !result.ok && return result
-            @return_on_nonfinite_array(eval_context, result.x)
+            $(eval_child_expr(:result, :(get_child(tree, 1))))
             deg1_eval(result.x, operators.unaops[op_idx], eval_context)
         end
     end
-    # This @nif lets us generate an if statement over choice of operator,
-    # which means the compiler will be able to completely avoid type inference on operators.
     return quote
         fused = use_fused(eval_context)
-        Base.Cartesian.@nif(
-            $nuna,
-            i -> i == op_idx,  # COV_EXCL_LINE
-            i -> let op = operators.unaops[i]  # COV_EXCL_LINE
-                if fused &&
-                    get_child(tree, 1).degree == 2 &&
-                    get_child(get_child(tree, 1), 1).degree == 0 &&
-                    get_child(get_child(tree, 1), 2).degree == 0
-                    # op(op2(x, y)), where x, y, z are constants or variables.
-                    l_op_idx = get_child(tree, 1).op
-                    dispatch_deg1_l2_ll0_lr0_eval(
-                        tree, cX, op, l_op_idx, operators.binops, eval_context
-                    )
-                elseif fused &&
-                    get_child(tree, 1).degree == 1 &&
-                    get_child(get_child(tree, 1), 1).degree == 0
-                    # op(op2(x)), where x is a constant or variable.
-                    l_op_idx = get_child(tree, 1).op
-                    dispatch_deg1_l1_ll0_eval(
-                        tree, cX, op, l_op_idx, operators.unaops, eval_context
-                    )
-                else
-                    # op(x), for any x.
-                    result = _eval_tree_array(get_child(tree, 1), cX, operators, eval_context)
-                    !result.ok && return result
-                    @return_on_nonfinite_array(eval_context, result.x)
-                    deg1_eval(result.x, op, eval_context)
-                end
-            end
-        )
+        unaops = operators.unaops
+        child = get_child(tree, 1)
+        if fused &&
+            child.degree == 2 &&
+            get_child(child, 1).degree == 0 &&
+            get_child(child, 2).degree == 0
+            # op(op2(x, y)), where x, y, z are constants or variables.
+            return $(nif_expr(
+                nuna,
+                :op_idx,
+                i -> :(dispatch_deg1_l2_ll0_lr0_eval(
+                    tree, cX, unaops[$i], child.op, operators.binops, eval_context
+                )),
+            ))
+        elseif fused && child.degree == 1 && get_child(child, 1).degree == 0
+            # op(op2(x)), where x is a constant or variable.
+            return $(nif_expr(
+                nuna,
+                :op_idx,
+                i -> :(dispatch_deg1_l1_ll0_eval(
+                    tree, cX, unaops[$i], child.op, unaops, eval_context
+                )),
+            ))
+        end
+        # op(x), for any x.
+        $(eval_child_expr(:result, :child))
+        return $(nif_expr(
+            nuna, :op_idx, i -> :(deg1_eval(result.x, unaops[$i], eval_context))
+        ))
     end
 end
 @generated function dispatch_deg1_l2_ll0_lr0_eval(
@@ -634,15 +611,11 @@ end
     nbin = counttuple(binops)
     # (Note this is only called from dispatch_deg1_eval, which has already
     # checked for long compilation times, so we don't need to check here)
-    quote
-        Base.Cartesian.@nif(
-            $nbin,
-            j -> j == l_op_idx,  # COV_EXCL_LINE
-            j -> let op_l = binops[j]  # COV_EXCL_LINE
-                deg1_l2_ll0_lr0_eval(tree, cX, op, op_l, eval_context)
-            end,
-        )
-    end
+    return nif_expr(
+        nbin,
+        :l_op_idx,
+        j -> :(deg1_l2_ll0_lr0_eval(tree, cX, op, binops[$j], eval_context)),
+    )
 end
 @generated function dispatch_deg1_l1_ll0_eval(
     tree::AbstractExpressionNode{T},
@@ -653,15 +626,9 @@ end
     eval_context::EvalContext,
 )::ResultOk where {T,F}
     nuna = counttuple(unaops)
-    quote
-        Base.Cartesian.@nif(
-            $nuna,
-            j -> j == l_op_idx,  # COV_EXCL_LINE
-            j -> let op_l = unaops[j]  # COV_EXCL_LINE
-                deg1_l1_ll0_eval(tree, cX, op, op_l, eval_context)
-            end,
-        )
-    end
+    return nif_expr(
+        nuna, :l_op_idx, j -> :(deg1_l1_ll0_eval(tree, cX, op, unaops[$j], eval_context))
+    )
 end
 
 function deg1_l2_ll0_lr0_eval(
@@ -790,6 +757,22 @@ end
     end
 end
 
+@noinline function branch0_leaves(
+    tree::AbstractExpressionNode{T}, ::Val{side}, ::Val{early_exit}
+) where {T,side,early_exit}
+    branch = side === :left ? get_child(tree, 1) : get_child(tree, 2)
+    leaves = if side === :left
+        (get_child(branch, 1), get_child(branch, 2), get_child(tree, 2))
+    else
+        (get_child(tree, 1), get_child(branch, 1), get_child(branch, 2))
+    end
+    ok = !(early_exit && any(leaf -> leaf.constant && !is_valid(leaf.val), leaves))
+    features = map(leaf -> leaf.constant ? 1 : Int(leaf.feature), leaves)
+    values = map(leaf -> leaf.constant ? leaf.val : zero(T), leaves)
+    bounds = map(leaf -> leaf.constant ? -1 : typemax(Int), leaves)
+    return ok, features, values, bounds
+end
+
 function deg2_branch0_eval(
     tree::AbstractExpressionNode{T},
     cX::AbstractMatrix{T},
@@ -799,32 +782,17 @@ function deg2_branch0_eval(
     eval_context::EvalContext{false},
 ) where {T<:Number,F,F2,side}
     index_style = IndexStyle(typeof(cX))
-    branch = side === :left ? get_child(tree, 1) : get_child(tree, 2)
-    leaf1 = side === :left ? get_child(branch, 1) : get_child(tree, 1)
-    leaf2 = side === :left ? get_child(branch, 2) : get_child(branch, 1)
-    leaf3 = side === :left ? get_child(tree, 2) : get_child(branch, 2)
-
-    if eval_context.early_exit isa Val{true} && leaf1.constant && !is_valid(leaf1.val)
-        return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
-    elseif eval_context.early_exit isa Val{true} && leaf2.constant && !is_valid(leaf2.val)
-        return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
-    elseif eval_context.early_exit isa Val{true} && leaf3.constant && !is_valid(leaf3.val)
-        return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
-    end
-
-    constant1 = leaf1.constant
-    constant2 = leaf2.constant
-    constant3 = leaf3.constant
-    feature1 = constant1 ? 1 : leaf1.feature
-    feature2 = constant2 ? 1 : leaf2.feature
-    feature3 = constant3 ? 1 : leaf3.feature
+    ok, features, values, bounds = branch0_leaves(tree, Val(side), eval_context.early_exit)
+    cumulator = get_array(eval_context.buffer, cX, axes(cX, 2))
+    ok || return ResultOk(cumulator, false)
+    feature1, feature2, feature3 = features
+    value1, value2, value3 = values
+    bound1, bound2, bound3 = bounds
     input1_index = first_feature_index(cX, feature1)
     input2_index = first_feature_index(cX, feature2)
     input3_index = first_feature_index(cX, feature3)
     feature_stride = size(cX, 1)
-    value1 = constant1 ? leaf1.val : zero(T)
-    value2 = constant2 ? leaf2.val : zero(T)
-    value3 = constant3 ? leaf3.val : zero(T)
+    constant1, constant2, constant3 = map(==(-1), bounds)
     if side === :left && constant1 && constant2
         val_branch = branch_op(value1, value2)::T
         @return_on_nonfinite_val(eval_context, val_branch, cX)
@@ -834,16 +802,17 @@ function deg2_branch0_eval(
     end
     side_val = Val(side)
     early_exit = eval_context.early_exit
-    cumulator = get_array(eval_context.buffer, cX, axes(cX, 2))
+    first_sample = first(axes(cX, 2))
     @inbounds @simd for j in axes(cX, 2)
+        offset = j - first_sample
         x1 = ifelse(
-            constant1, value1, feature_at(cX, input1_index, feature1, j, index_style)
+            offset > bound1, value1, feature_at(cX, input1_index, feature1, j, index_style)
         )
         x2 = ifelse(
-            constant2, value2, feature_at(cX, input2_index, feature2, j, index_style)
+            offset > bound2, value2, feature_at(cX, input2_index, feature2, j, index_style)
         )
         x3 = ifelse(
-            constant3, value3, feature_at(cX, input3_index, feature3, j, index_style)
+            offset > bound3, value3, feature_at(cX, input3_index, feature3, j, index_style)
         )
         cumulator[j] = _fused_binary3(op, branch_op, x1, x2, x3, side_val, early_exit)
         input1_index += feature_stride
@@ -988,13 +957,9 @@ over an entire array when the values are all the same.
     quote
         deg = tree.degree
         deg == 0 && return deg0_eval_constant(tree)
-        Base.Cartesian.@nif(
-            $D,
-            i -> i == deg,  # COV_EXCL_LINE
-            i -> begin  # COV_EXCL_LINE
-                inner_dispatch_degn_eval_constant(tree, Val(i), operators)
-            end,
-        )
+        $(nif_expr(
+            D, :deg, i -> :(inner_dispatch_degn_eval_constant(tree, Val($i), operators))
+        ))
     end
 end
 
@@ -1003,18 +968,21 @@ end
     tree::AbstractExpressionNode{T}, ::Val{degree}, operators::OperatorEnum
 ) where {T,degree}
     nops = get_nops(operators, Val(degree))
+    input_names = [Symbol(:input_, i) for i in 1:degree]
     get_inputs = quote
         cs = get_children(tree, Val($degree))
-        Base.Cartesian.@nexprs(  # COV_EXCL_LINE
-            $degree,
-            i -> begin  # COV_EXCL_LINE
-                input_i = let result = dispatch_constant_tree(cs[i], operators)
-                    !result.ok && return result
-                    result.x
-                end
-            end
+        $(
+            (
+                :(
+                    $(input_names[i]) =
+                        let result = dispatch_constant_tree(cs[$i], operators)
+                            !result.ok && return result
+                            result.x
+                        end
+                ) for i in 1:degree
+            )...
         )
-        inputs = Base.Cartesian.@ntuple($degree, i -> input_i)
+        inputs = ($(input_names...),)
     end
     if nops > OPERATOR_LIMIT_BEFORE_SLOWDOWN
         return quote
@@ -1026,15 +994,15 @@ end
         return quote
             $get_inputs
             op_idx = tree.op
-            Base.Cartesian.@nif(
-                $nops,
-                i -> i == op_idx,  # COV_EXCL_LINE
-                i -> begin  # COV_EXCL_LINE
+            $(nif_expr(
+                nops,
+                :op_idx,
+                i -> :(
                     degn_eval_constant(
-                        inputs, get_op(operators, Val($degree), Val(i))
+                        inputs, get_op(operators, Val($degree), Val($i))
                     )::ResultOk{T}
-                end,
-            )
+                ),
+            ))
         end
     end
 end
