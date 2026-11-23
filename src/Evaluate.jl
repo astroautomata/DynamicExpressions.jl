@@ -257,6 +257,19 @@ def eval(current_node)
 The bulk of the code is for optimizations and pre-emptive NaN/Inf checks,
 which speed up evaluation significantly.
 """
+function _eval_tree_array_fast(
+    tree::AbstractExpressionNode{T},
+    cX::AbstractMatrix{T},
+    operators::OperatorEnum,
+    eval_context::EvalContext{false},
+) where {T}
+    result = _eval_tree_array(tree, cX, operators, eval_context)
+    return (
+        result.x,
+        result.ok && (eval_context.early_exit isa Val{false} || is_valid_array(result.x)),
+    )
+end
+
 function eval_tree_array(
     tree::AbstractExpressionNode{T},
     cX::AbstractMatrix{T},
