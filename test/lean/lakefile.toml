@@ -1,0 +1,7 @@
+name = "DynExpr"
+defaultTargets = ["DynExpr"]
+
+[[lean_lib]]
+name = "DynExpr"
+# Per-file Lean memory limit (MB).
+moreLeanArgs = ["-M8000"]
