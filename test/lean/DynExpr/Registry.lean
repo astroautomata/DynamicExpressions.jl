@@ -10,6 +10,7 @@ import DynExpr.Expressions
 import DynExpr.ParamStruct
 import DynExpr.Plumbing
 import DynExpr.NoAlias
+import DynExpr.Arena
 
 namespace DynExpr.Registry
 
@@ -25,6 +26,7 @@ def all : List Entry :=
     ++ DynExpr.ParamStruct.entries
     ++ DynExpr.Plumbing.entries
     ++ DynExpr.NoAlias.entries
+    ++ DynExpr.Arena.entries
 
 /-- Ids of properties about fixed package code that takes no inputs (include
 order, registration tables, version string). Every other property must
