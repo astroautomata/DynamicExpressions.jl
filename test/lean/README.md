@@ -3,6 +3,8 @@
 This Lean 4 project models the Julia code at commit `65884b65794d014f140aa546736c0aa759dd674e`. In [the property registry](registry.tsv), **proven** means Lean checked a proof about the model under the stated assumptions. **Refuted** means Lean checked a counterexample to the property, with a Julia reproducer for the corresponding behaviour.
 
 The Lean model is maintained separately from the Julia implementation. A Julia source change does not rebuild or recheck the model. Update the matching Lean definitions and proofs when changing modelled behaviour.
+A separate pull-request check warns when a file cited in the registry changes, disappears, or has no recorded hash; these warnings do not fail CI.
+After reviewing the matching Lean model and updating it as needed, run `test/lean/scripts/source-hashes.py update` from the repository root.
 
 ## Build and audit
 
