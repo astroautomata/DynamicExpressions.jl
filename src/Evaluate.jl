@@ -13,6 +13,8 @@ import ..ValueInterfaceModule: is_valid, is_valid_array
 
 const OPERATOR_LIMIT_BEFORE_SLOWDOWN = 15
 
+const _FUSED_VALID_FLOAT = Union{AbstractFloat,Complex{<:AbstractFloat}}
+
 macro return_on_nonfinite_val(eval_context, val, X)
     :(
         if $(esc(eval_context)).early_exit isa Val{true} && !is_valid($(esc(val)))
@@ -25,7 +27,9 @@ end
 
 macro return_on_nonfinite_array(eval_context, array)
     :(
-        if $(esc(eval_context)).early_exit isa Val{true} && !is_valid_array($(esc(array)))
+        if $(esc(eval_context)).early_exit isa Val{true} &&
+            !(_kernels_validate(eltype($(esc(array))), $(esc(eval_context))) isa Val{true}) &&
+            !is_valid_array($(esc(array)))
             return $(ResultOk)($(esc(array)), false)
         end
     )
@@ -222,6 +226,11 @@ Base.@deprecate_binding EvalOptions EvalContext
 
 @inline use_fused(eval_context::EvalContext) = eval_context.use_fused isa Val{true}
 
+@inline _kernels_validate(
+    ::Type{T}, ::EvalContext{false,<:Any,true,<:Any,true}
+) where {T<:_FUSED_VALID_FLOAT} = Val(true)
+@inline _kernels_validate(::Type, ::EvalContext) = Val(false)
+
 _copy(x) = copy(x)
 _copy(::Nothing) = nothing
 function Base.copy(eval_context::EvalContext)
@@ -328,10 +337,15 @@ function eval_tree_array(
     end
 
     result = _eval_tree_array(tree, cX, operators, _eval_context)
-    return (
-        result.x,
-        result.ok && (_eval_context.early_exit isa Val{false} || is_valid_array(result.x)),
-    )
+    ok = if !result.ok
+        false
+    elseif _eval_context.early_exit isa Val{false} ||
+        _kernels_validate(T, _eval_context) isa Val{true}
+        true
+    else
+        is_valid_array(result.x)
+    end
+    return (result.x, ok)
 end
 
 function eval_tree_array(
@@ -392,15 +406,38 @@ function _eval_tree_array(
 end
 
 @generated function degn_eval(
-    cumulators::NTuple{N,<:AbstractVector{T}}, op::F, ::EvalContext{false}
-)::ResultOk where {N,T,F}
+    cumulators::NTuple{N,<:AbstractVector{T}},
+    op::F,
+    ::EvalContext{false,B,E,BUF,U},
+)::ResultOk where {N,T,F,B,E,BUF,U}
     # Fast general implementation of `cumulators[1] .= op.(cumulators[1], cumulators[2], ...)`
-    quote
-        Base.Cartesian.@nexprs($N, i -> cumulator_i = cumulators[i])
-        @inbounds @simd for j in eachindex(cumulator_1)
-            cumulator_1[j] = Base.Cartesian.@ncall($N, op, i -> cumulator_i[j])::T
-        end  # COV_EXCL_LINE
-        return ResultOk(cumulator_1, true)
+    if E === true && U === true && T <: _FUSED_VALID_FLOAT && N >= 2
+        quote
+            Base.Cartesian.@nexprs($N, i -> cumulator_i = cumulators[i])
+            acc = zero(T)
+            @inbounds @simd for j in eachindex(cumulator_1)
+                x = Base.Cartesian.@ncall($N, op, i -> cumulator_i[j])::T
+                cumulator_1[j] = x
+                acc += x
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator_1, is_valid(acc) || all(is_valid, cumulator_1))
+        end
+    elseif E === true && U === true && T <: _FUSED_VALID_FLOAT
+        quote
+            Base.Cartesian.@nexprs($N, i -> cumulator_i = cumulators[i])
+            @inbounds @simd for j in eachindex(cumulator_1)
+                cumulator_1[j] = Base.Cartesian.@ncall($N, op, i -> cumulator_i[j])::T
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator_1, is_valid_array(cumulator_1))
+        end
+    else
+        quote
+            Base.Cartesian.@nexprs($N, i -> cumulator_i = cumulators[i])
+            @inbounds @simd for j in eachindex(cumulator_1)
+                cumulator_1[j] = Base.Cartesian.@ncall($N, op, i -> cumulator_i[j])::T
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator_1, true)
+        end
     end
 end
 
@@ -429,7 +466,27 @@ function deg0_eval(
         )
     else
         checkbounds(cX, tree.feature, :)
-        return ResultOk(get_feature_array(eval_context.buffer, cX, tree.feature), true)
+        if _kernels_validate(T, eval_context) isa Val{true} &&
+            cX isa FeatureMajorMatrix{T} &&
+            eval_context.buffer isa ArrayBuffer
+            out = get_array(eval_context.buffer, cX, axes(cX, 2))
+            n = size(cX.data, 1)
+            offset = (Int(tree.feature) - 1) * n
+            acc = zero(T)
+            @inbounds @simd for j in 1:n
+                v = cX.data[offset + j]
+                out[j] = v
+                acc += v
+            end
+            return ResultOk(out, is_valid(acc) || all(is_valid, out))
+        end
+        arr = get_feature_array(eval_context.buffer, cX, tree.feature)
+        ok = if _kernels_validate(T, eval_context) isa Val{true}
+            is_valid_array(arr)
+        else
+            true
+        end
+        return ResultOk(arr, ok)
     end
 end
 
@@ -729,6 +786,7 @@ function deg1_l2_ll0_lr0_eval(
 ) where {T,F,F2}
     index_style = IndexStyle(typeof(cX))
     early_exit = eval_context.early_exit isa Val{true}
+    validate = _kernels_validate(T, eval_context) isa Val{true}
     if get_child(get_child(tree, 1), 1).constant &&
         get_child(get_child(tree, 1), 2).constant
         val_ll = get_child(get_child(tree, 1), 1).val
@@ -754,7 +812,7 @@ function deg1_l2_ll0_lr0_eval(
             cumulator[j] = x
             input_lr_index += fstride
         end  # COV_EXCL_LINE
-        return ResultOk(cumulator, true)
+        return ResultOk(cumulator, validate ? is_valid_array(cumulator) : true)
     elseif get_child(get_child(tree, 1), 2).constant
         feature_ll = get_child(get_child(tree, 1), 1).feature
         input_ll_index = first_feature_index(cX, feature_ll)
@@ -769,7 +827,7 @@ function deg1_l2_ll0_lr0_eval(
             cumulator[j] = x
             input_ll_index += fstride
         end  # COV_EXCL_LINE
-        return ResultOk(cumulator, true)
+        return ResultOk(cumulator, validate ? is_valid_array(cumulator) : true)
     else
         feature_ll = get_child(get_child(tree, 1), 1).feature
         feature_lr = get_child(get_child(tree, 1), 2).feature
@@ -787,7 +845,7 @@ function deg1_l2_ll0_lr0_eval(
             input_ll_index += fstride
             input_lr_index += fstride
         end  # COV_EXCL_LINE
-        return ResultOk(cumulator, true)
+        return ResultOk(cumulator, validate ? is_valid_array(cumulator) : true)
     end
 end
 
@@ -801,6 +859,7 @@ function deg1_l1_ll0_eval(
 ) where {T,F,F2}
     index_style = IndexStyle(typeof(cX))
     early_exit = eval_context.early_exit isa Val{true}
+    validate = _kernels_validate(T, eval_context) isa Val{true}
     if get_child(get_child(tree, 1), 1).constant
         val_ll = get_child(get_child(tree, 1), 1).val
         @return_on_nonfinite_val(eval_context, val_ll, cX)
@@ -820,7 +879,7 @@ function deg1_l1_ll0_eval(
             cumulator[j] = x
             input_ll_index += fstride
         end  # COV_EXCL_LINE
-        return ResultOk(cumulator, true)
+        return ResultOk(cumulator, validate ? is_valid_array(cumulator) : true)
     end
 end
 
@@ -892,6 +951,28 @@ function deg2_branch0_eval(
     side_val = Val(side)
     early_exit = eval_context.early_exit
     first_sample = first(axes(cX, 2))
+    if _kernels_validate(T, eval_context) isa Val{true}
+        acc = zero(T)
+        @inbounds @simd for j in axes(cX, 2)
+            offset = j - first_sample
+            x1 = ifelse(
+                offset > bound1, value1, feature_at(cX, input1_index, feature1, j, index_style)
+            )
+            x2 = ifelse(
+                offset > bound2, value2, feature_at(cX, input2_index, feature2, j, index_style)
+            )
+            x3 = ifelse(
+                offset > bound3, value3, feature_at(cX, input3_index, feature3, j, index_style)
+            )
+            x = _fused_binary3(op, branch_op, x1, x2, x3, side_val, early_exit)
+            cumulator[j] = x
+            acc += x
+            input1_index += fstride
+            input2_index += fstride
+            input3_index += fstride
+        end  # COV_EXCL_LINE
+        return ResultOk(cumulator, is_valid(acc) || all(is_valid, cumulator))
+    end
     @inbounds @simd for j in axes(cX, 2)
         offset = j - first_sample
         x1 = ifelse(
@@ -919,6 +1000,7 @@ function deg2_l0_r0_eval(
     eval_context::EvalContext{false},
 ) where {T,F}
     index_style = IndexStyle(typeof(cX))
+    validate = _kernels_validate(T, eval_context) isa Val{true}
     if get_child(tree, 1).constant && get_child(tree, 2).constant
         val_l = get_child(tree, 1).val
         @return_on_nonfinite_val(eval_context, val_l, cX)
@@ -934,6 +1016,16 @@ function deg2_l0_r0_eval(
         feature_r = get_child(tree, 2).feature
         input_r_index = first_feature_index(cX, feature_r)
         fstride = feature_stride(cX)
+        if validate
+            acc = zero(T)
+            @inbounds @simd for j in axes(cX, 2)
+                x = op(val_l, feature_at(cX, input_r_index, feature_r, j, index_style))::T
+                cumulator[j] = x
+                acc += x
+                input_r_index += fstride
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator, is_valid(acc) || all(is_valid, cumulator))
+        end
         @inbounds @simd for j in axes(cX, 2)
             x = op(val_l, feature_at(cX, input_r_index, feature_r, j, index_style))::T
             cumulator[j] = x
@@ -947,6 +1039,16 @@ function deg2_l0_r0_eval(
         fstride = feature_stride(cX)
         val_r = get_child(tree, 2).val
         @return_on_nonfinite_val(eval_context, val_r, cX)
+        if validate
+            acc = zero(T)
+            @inbounds @simd for j in axes(cX, 2)
+                x = op(feature_at(cX, input_l_index, feature_l, j, index_style), val_r)::T
+                cumulator[j] = x
+                acc += x
+                input_l_index += fstride
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator, is_valid(acc) || all(is_valid, cumulator))
+        end
         @inbounds @simd for j in axes(cX, 2)
             x = op(feature_at(cX, input_l_index, feature_l, j, index_style), val_r)::T
             cumulator[j] = x
@@ -960,6 +1062,20 @@ function deg2_l0_r0_eval(
         input_l_index = first_feature_index(cX, feature_l)
         input_r_index = first_feature_index(cX, feature_r)
         fstride = feature_stride(cX)
+        if validate
+            acc = zero(T)
+            @inbounds @simd for j in axes(cX, 2)
+                x = op(
+                    feature_at(cX, input_l_index, feature_l, j, index_style),
+                    feature_at(cX, input_r_index, feature_r, j, index_style),
+                )::T
+                cumulator[j] = x
+                acc += x
+                input_l_index += fstride
+                input_r_index += fstride
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator, is_valid(acc) || all(is_valid, cumulator))
+        end
         @inbounds @simd for j in axes(cX, 2)
             x = op(
                 feature_at(cX, input_l_index, feature_l, j, index_style),
@@ -982,9 +1098,19 @@ function deg2_l0_eval(
     eval_context::EvalContext{false},
 ) where {T,F}
     index_style = IndexStyle(typeof(cX))
+    validate = _kernels_validate(T, eval_context) isa Val{true}
     if get_child(tree, 1).constant
         val = get_child(tree, 1).val
         @return_on_nonfinite_val(eval_context, val, cX)
+        if validate
+            acc = zero(T)
+            @inbounds @simd for j in eachindex(cumulator)
+                x = op(val, cumulator[j])::T
+                cumulator[j] = x
+                acc += x
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator, is_valid(acc) || all(is_valid, cumulator))
+        end
         @inbounds @simd for j in eachindex(cumulator)
             x = op(val, cumulator[j])::T
             cumulator[j] = x
@@ -994,6 +1120,16 @@ function deg2_l0_eval(
         feature = get_child(tree, 1).feature
         input_index = first_feature_index(cX, feature)
         fstride = feature_stride(cX)
+        if validate
+            acc = zero(T)
+            @inbounds @simd for j in eachindex(cumulator)
+                x = op(feature_at(cX, input_index, feature, j, index_style), cumulator[j])::T
+                cumulator[j] = x
+                acc += x
+                input_index += fstride
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator, is_valid(acc) || all(is_valid, cumulator))
+        end
         @inbounds @simd for j in eachindex(cumulator)
             x = op(feature_at(cX, input_index, feature, j, index_style), cumulator[j])::T
             cumulator[j] = x
@@ -1012,9 +1148,19 @@ function deg2_r0_eval(
     eval_context::EvalContext{false},
 ) where {T,F}
     index_style = IndexStyle(typeof(cX))
+    validate = _kernels_validate(T, eval_context) isa Val{true}
     if get_child(tree, 2).constant
         val = get_child(tree, 2).val
         @return_on_nonfinite_val(eval_context, val, cX)
+        if validate
+            acc = zero(T)
+            @inbounds @simd for j in eachindex(cumulator)
+                x = op(cumulator[j], val)::T
+                cumulator[j] = x
+                acc += x
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator, is_valid(acc) || all(is_valid, cumulator))
+        end
         @inbounds @simd for j in eachindex(cumulator)
             x = op(cumulator[j], val)::T
             cumulator[j] = x
@@ -1024,6 +1170,16 @@ function deg2_r0_eval(
         feature = get_child(tree, 2).feature
         input_index = first_feature_index(cX, feature)
         fstride = feature_stride(cX)
+        if validate
+            acc = zero(T)
+            @inbounds @simd for j in eachindex(cumulator)
+                x = op(cumulator[j], feature_at(cX, input_index, feature, j, index_style))::T
+                cumulator[j] = x
+                acc += x
+                input_index += fstride
+            end  # COV_EXCL_LINE
+            return ResultOk(cumulator, is_valid(acc) || all(is_valid, cumulator))
+        end
         @inbounds @simd for j in eachindex(cumulator)
             x = op(cumulator[j], feature_at(cX, input_index, feature, j, index_style))::T
             cumulator[j] = x
