@@ -1,5 +1,45 @@
 # Changelog
 
+## [2.14.0](https://github.com/astroautomata/DynamicExpressions.jl/compare/v2.13.0...v2.14.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* break sharing when converting GraphNode to Node ([#242](https://github.com/astroautomata/DynamicExpressions.jl/issues/242)) ([a318947](https://github.com/astroautomata/DynamicExpressions.jl/commit/a318947b69d486447243c3a4c5de5b7a17edc693))
+* cache operator names only for singleton callables ([#231](https://github.com/astroautomata/DynamicExpressions.jl/issues/231)) ([ee3cb71](https://github.com/astroautomata/DynamicExpressions.jl/commit/ee3cb716542264308fb38124bb8c51cb637708d7))
+* chained + and * with scalars before the expression ([#254](https://github.com/astroautomata/DynamicExpressions.jl/issues/254)) ([09411fc](https://github.com/astroautomata/DynamicExpressions.jl/commit/09411fce450b43415a067785046c2547e0d33e16))
+* compare and convert nodes across maximum degrees ([#238](https://github.com/astroautomata/DynamicExpressions.jl/issues/238)) ([804d36e](https://github.com/astroautomata/DynamicExpressions.jl/commit/804d36e4ab4d3c925bde7bd3c3eb4eeab59b6515))
+* copy_node(::AbstractExpression) forwards keyword arguments ([#255](https://github.com/astroautomata/DynamicExpressions.jl/issues/255)) ([66f63d6](https://github.com/astroautomata/DynamicExpressions.jl/commit/66f63d6f82edaa3b697a1570837100ca4d395d5b))
+* copying an Expression deep-copies its metadata except operators ([#256](https://github.com/astroautomata/DynamicExpressions.jl/issues/256)) ([1aab38e](https://github.com/astroautomata/DynamicExpressions.jl/commit/1aab38e769288cabf9ba9d4ad84600f6cb5b4e01))
+* differentiable_eval_tree_array flags invalid leaf values ([#275](https://github.com/astroautomata/DynamicExpressions.jl/issues/275)) ([1afa9b1](https://github.com/astroautomata/DynamicExpressions.jl/commit/1afa9b1c0f6ef933968a440a885429ad6fcffe8b))
+* early_exit=false no longer stops at invalid constant subtrees ([#269](https://github.com/astroautomata/DynamicExpressions.jl/issues/269)) ([a0b6a16](https://github.com/astroautomata/DynamicExpressions.jl/commit/a0b6a16ad6ac64446958641c55a65d26c32e21c0))
+* empty-sample ChainRules pullback ([#227](https://github.com/astroautomata/DynamicExpressions.jl/issues/227)) ([59d61d5](https://github.com/astroautomata/DynamicExpressions.jl/commit/59d61d50131546c8e79c7d7a5df3e91bb47cef9e))
+* evaluate ParametricExpression on zero samples ([#246](https://github.com/astroautomata/DynamicExpressions.jl/issues/246)) ([254a612](https://github.com/astroautomata/DynamicExpressions.jl/commit/254a612b7f9c2b925c555947bbc7f108b8c87e69))
+* fused branch kernel checks constant subtrees like the unfused path ([#270](https://github.com/astroautomata/DynamicExpressions.jl/issues/270)) ([625548f](https://github.com/astroautomata/DynamicExpressions.jl/commit/625548fa15307014417c08fae2eb075ad9279016))
+* fused unary kernels apply the outer operator when early exit is off ([#268](https://github.com/astroautomata/DynamicExpressions.jl/issues/268)) ([eecf08d](https://github.com/astroautomata/DynamicExpressions.jl/commit/eecf08de6bfb5584c23ddf5a9932f4ac68f8052b))
+* GraphNode equality must match shared nodes to each other ([#241](https://github.com/astroautomata/DynamicExpressions.jl/issues/241)) ([62cde88](https://github.com/astroautomata/DynamicExpressions.jl/commit/62cde88783ed008a5aea9265102d92118f5e9006))
+* infer maximum degree from children in Node constructors ([#234](https://github.com/astroautomata/DynamicExpressions.jl/issues/234)) ([24ec66d](https://github.com/astroautomata/DynamicExpressions.jl/commit/24ec66d066695b90e8c8078e2600d44492462928))
+* invalid constant leaves fail evaluation even with zero samples ([#267](https://github.com/astroautomata/DynamicExpressions.jl/issues/267)) ([4ecbf3f](https://github.com/astroautomata/DynamicExpressions.jl/commit/4ecbf3faef9b7670166ee5b4b62c77a53be93f08))
+* iterate each shared GraphNode once, and test the node interface on shared trees ([#240](https://github.com/astroautomata/DynamicExpressions.jl/issues/240)) ([af5fba7](https://github.com/astroautomata/DynamicExpressions.jl/commit/af5fba737cfea664b85886bf907339d8cf74549d))
+* keep gradient shape when no gradients are requested on views ([#225](https://github.com/astroautomata/DynamicExpressions.jl/issues/225)) ([509ea42](https://github.com/astroautomata/DynamicExpressions.jl/commit/509ea4204966ff7c729b3cf9759df8ea2d33603c))
+* keep maximum degree in convert(Node, tree) ([#239](https://github.com/astroautomata/DynamicExpressions.jl/issues/239)) ([c501dda](https://github.com/astroautomata/DynamicExpressions.jl/commit/c501dda6ef3e1a1732a9937aff7e4fce68e3d09b))
+* make bumper=true dispatch exactly like bumper=false ([#277](https://github.com/astroautomata/DynamicExpressions.jl/issues/277)) ([de10312](https://github.com/astroautomata/DynamicExpressions.jl/commit/de1031203a34acc5b3000d49a48fc07d59cc7d04))
+* ParametricNode leaf equality checks the leaf kind ([#244](https://github.com/astroautomata/DynamicExpressions.jl/issues/244)) ([da76373](https://github.com/astroautomata/DynamicExpressions.jl/commit/da763734cb34f06819aef889a090d3a6fc2b8982))
+* parse broadcast operator spellings ([#230](https://github.com/astroautomata/DynamicExpressions.jl/issues/230)) ([2c8f6d1](https://github.com/astroautomata/DynamicExpressions.jl/commit/2c8f6d1868221ca062241884208c6eefcb5b3f75))
+* parse NaN, Inf, and -Inf constants ([#229](https://github.com/astroautomata/DynamicExpressions.jl/issues/229)) ([f9b8059](https://github.com/astroautomata/DynamicExpressions.jl/commit/f9b8059ff8408b75246c5f531668a3099bc4e493))
+* reject negative and non-finite NodeSampler weights ([#259](https://github.com/astroautomata/DynamicExpressions.jl/issues/259)) ([39c9ba0](https://github.com/astroautomata/DynamicExpressions.jl/commit/39c9ba032968271a236fa83217ce204cde365e23))
+* rename combine_operators to combine_operators! and support ParametricNode ([#251](https://github.com/astroautomata/DynamicExpressions.jl/issues/251)) ([19aff59](https://github.com/astroautomata/DynamicExpressions.jl/commit/19aff59fb3577778e1a8d36e982dd6827e47aa9c))
+* report incomplete directional derivatives on NaN or Inf ([#226](https://github.com/astroautomata/DynamicExpressions.jl/issues/226)) ([6e967f7](https://github.com/astroautomata/DynamicExpressions.jl/commit/6e967f70a15087b97a2ef1be055483f23388410a))
+* require exact-length input in parametric and structured set_scalar_constants! ([#245](https://github.com/astroautomata/DynamicExpressions.jl/issues/245)) ([e6a699f](https://github.com/astroautomata/DynamicExpressions.jl/commit/e6a699f907c04c77fceea47194046f10e1248e5c))
+* set_scalar_constants! with constants that hold zero scalars ([#250](https://github.com/astroautomata/DynamicExpressions.jl/issues/250)) ([9ae5536](https://github.com/astroautomata/DynamicExpressions.jl/commit/9ae55360a5c571000426ec314ee344e1f3968f5e))
+* size matrix ArrayBuffer slots by sample count and bounds-check them ([#265](https://github.com/astroautomata/DynamicExpressions.jl/issues/265)) ([196c004](https://github.com/astroautomata/DynamicExpressions.jl/commit/196c00474cf1489e158f25d20f27e52f18aa4997))
+* throw BoundsError for feature indices beyond the input rows ([#264](https://github.com/astroautomata/DynamicExpressions.jl/issues/264)) ([be79963](https://github.com/astroautomata/DynamicExpressions.jl/commit/be799636ca3438db588032a5a53682175cbb4fb5))
+
+
+### Performance Improvements
+
+* compile one loop per fused branch kernel instead of one per leaf kind ([#278](https://github.com/astroautomata/DynamicExpressions.jl/issues/278)) ([21cb6bd](https://github.com/astroautomata/DynamicExpressions.jl/commit/21cb6bdd84f193c9d132ba3ac6c1efa893731383))
+
 ## [2.13.0](https://github.com/astroautomata/DynamicExpressions.jl/compare/v2.12.0...v2.13.0) (2026-10-14)
 
 

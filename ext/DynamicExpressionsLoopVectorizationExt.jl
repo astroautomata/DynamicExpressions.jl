@@ -146,6 +146,13 @@ function deg2_branch0_eval(
     value1 = constant1 ? leaf1.val : zero(T)
     value2 = constant2 ? leaf2.val : zero(T)
     value3 = constant3 ? leaf3.val : zero(T)
+    if side === :left && constant1 && constant2
+        val_branch = branch_op(value1, value2)::T
+        @return_on_nonfinite_val(eval_context, val_branch, cX)
+    elseif side === :right && constant2 && constant3
+        val_branch = branch_op(value2, value3)::T
+        @return_on_nonfinite_val(eval_context, val_branch, cX)
+    end
     cumulator = get_array(eval_context.buffer, cX, axes(cX, 2))
 
     if side === :left && eval_context.early_exit isa Val{true}

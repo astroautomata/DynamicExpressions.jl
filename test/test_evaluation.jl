@@ -211,6 +211,23 @@ end
     end
 end
 
+@testitem "early_exit=false evaluates invalid constant subtrees" begin
+    using DynamicExpressions, LoopVectorization
+
+    operators = OperatorEnum(1 => (inv,), 2 => (+,))
+    u(a) = Node(; op=1, children=(a,))
+    x1 = Node{Float64}(; feature=1)
+    c0 = Node{Float64}(; val=0.0)
+    X = [0.0 1.0 2.0]
+    for (tree, expected) in
+        ((Node(; op=1, children=(x1, u(u(c0)))), [0.0, 1.0, 2.0]), (u(u(c0)), zeros(3)))
+        for turbo in (false, true), use_fused in (false, true)
+            eval_context = EvalContext(; turbo, use_fused, early_exit=false)
+            @test eval_tree_array(tree, X, operators; eval_context) == (expected, true)
+        end
+    end
+end
+
 @testitem "Invalid constant leaves fail evaluation on zero samples" begin
     using DynamicExpressions, LoopVectorization
 
@@ -224,6 +241,30 @@ end
             (c(NaN) + x1, false),
             (c(Inf) * exp(x1), false),
             (c(1) + x1, true),
+        )
+            for turbo in (false, true), use_fused in (false, true)
+                eval_context = EvalContext(; turbo, use_fused)
+                result, ok = eval_tree_array(tree, X, operators; eval_context)
+                @test ok == expected_ok
+                @test size(result) == (0,)
+            end
+        end
+    end
+end
+
+@testitem "Invalid constant branches fail evaluation on zero samples" begin
+    using DynamicExpressions, LoopVectorization
+
+    operators = OperatorEnum(; binary_operators=[+, /])
+    for T in (Float32, Float64)
+        x1 = Node{T}(; feature=1)
+        c(v) = Node{T}(; val=v)
+        quotient(l, r) = Node(; op=2, children=(l, r))  # `/` would fold two constants
+        X = zeros(T, 1, 0)
+        for (tree, expected_ok) in (
+            (quotient(c(1), c(0)) + x1, false),
+            (x1 + quotient(c(1), c(0)), false),
+            (quotient(c(1), c(2)) + x1, true),
         )
             for turbo in (false, true), use_fused in (false, true)
                 eval_context = EvalContext(; turbo, use_fused)
@@ -252,6 +293,17 @@ end
         end
         @test_throws BoundsError eval_tree_array(tree, [1.0, 2.0], operators)
     end
+end
+
+@testitem "differentiable_eval_tree_array flags invalid leaves" begin
+    using DynamicExpressions
+
+    operators = OperatorEnum(1 => (-,), 2 => (+,))
+    x1 = Node{Float64}(; feature=1)
+    for (tree, X) in ((Node{Float64}(; val=NaN), [0.0;;]), (x1, [1.0 NaN]), (x1, [1.0 Inf]))
+        @test !differentiable_eval_tree_array(tree, X, operators)[2]
+    end
+    @test differentiable_eval_tree_array(x1, [1.0 2.0], operators) == ([1.0, 2.0], true)
 end
 
 @testitem "Test specific branches of evaluation" begin
@@ -452,7 +504,7 @@ end
     @test DynamicExpressions.EvalOptions === EvalContext
     @test DynamicExpressions.EvalOptions() isa EvalContext
     @test EvalContext(; turbo=true, bumper=true) isa
-        DynamicExpressions.EvalOptions{true,true}
+        DynamicExpressions.EvalOptions{true,false}
 
     tree = Node{Float64}(; feature=1)
     X = randn(1, 5)
@@ -573,5 +625,32 @@ end
         @test eval_tree_array(
             tree, X, operators; eval_context=EvalContext(; turbo, bumper=true)
         ) == expected
+    end
+end
+
+@testitem "bumper=true dispatches to custom fused kernels like bumper=false" begin
+    using DynamicExpressions
+    using DynamicExpressions.UtilsModule: ResultOk
+
+    struct BatchOnly end
+    (::BatchOnly)(x, y) = error("generic scalar kernel used instead of the custom method")
+    function DynamicExpressions.EvaluateModule.deg2_l0_r0_eval(
+        tree::AbstractExpressionNode{T},
+        cX::AbstractMatrix{T},
+        ::BatchOnly,
+        ::EvalContext{false,false},
+    ) where {T}
+        l, r = get_child(tree, 1).feature, get_child(tree, 2).feature
+        return ResultOk(cX[l, :] .+ cX[r, :], true)
+    end
+
+    operators = OperatorEnum(1 => (), 2 => (BatchOnly(),))
+    tree = Node{Float64}(;
+        op=1, children=(Node{Float64}(; feature=1), Node{Float64}(; feature=2))
+    )
+    X = [1.0 2.0; 10.0 20.0]
+    for bumper in (false, true)
+        @test eval_tree_array(tree, X, operators; eval_context=EvalContext(; bumper)) ==
+            ([11.0, 22.0], true)
     end
 end

@@ -712,6 +712,28 @@ end
     end
 end
 
+@testitem "StringsParse broadcast spellings round-trip" begin
+    using DynamicExpressions
+    using Test
+    operators = GenericOperatorEnum(
+        1 => (Base.BroadcastFunction(cos),),
+        2 => Tuple(Base.BroadcastFunction(op) for op in (+, -, *, /, ^, atan));
+        define_helper_functions=false,
+    )
+    x = Node{Float64}(; feature=1)
+    c = Node{Float64}(; val=2.0)
+    for tree in
+        (Node(; op=1, children=(x,)), (Node(; op=i, children=(c, x)) for i in 1:6)...)
+        parsed = parse_expression(
+            string_tree(tree, operators);
+            operators,
+            variable_names=["x1"],
+            node_type=Node{Float64},
+        )
+        @test parsed.tree == tree
+    end
+end
+
 @testitem "StringsParse callable names survive hash collisions" begin
     using DynamicExpressions
     using Test

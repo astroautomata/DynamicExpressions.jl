@@ -135,7 +135,9 @@ This holds evaluation policy and call-scoped mutable state.
 - `use_fused::Val{U}=Val(true)`: If `Val{true}`, use fused kernels for faster
     evaluation. Setting this to `Val{false}` will skip the fused kernels, meaning that
     you would only need to overload `deg0_eval`, `deg1_eval` and `deg2_eval` for custom
-    evaluation.
+    evaluation. Fused kernels check only their outputs under `early_exit`, so a `NaN`
+    or `Inf` in `X` that an operator maps to a finite value (e.g., `1 / x1` at
+    `x1 = Inf`) still completes with `true`; use `Val{false}` if that matters.
 """
 struct EvalContext{T,B,E,BUF<:Union{ArrayBuffer,Nothing},U}
     turbo::Val{T}
@@ -153,11 +155,10 @@ end
     use_fused::Union{Bool,Val}=Val(true),
 )
     v_turbo = _to_bool_val(turbo)
-    v_bumper = _to_bool_val(bumper)
     v_early_exit = _to_bool_val(early_exit)
     v_use_fused = _to_bool_val(use_fused)
 
-    return EvalContext(v_turbo, v_bumper, v_early_exit, buffer, v_use_fused)
+    return EvalContext(v_turbo, Val(false), v_early_exit, buffer, v_use_fused)
 end
 
 Base.@deprecate_binding EvalOptions EvalContext
@@ -317,8 +318,10 @@ function _eval_tree_array(
         return deg0_eval(tree, cX, eval_context)
     elseif is_constant(tree)
         # Speed hack for constant trees.
-        const_result = dispatch_constant_tree(tree, operators)::ResultOk{T}
-        !const_result.ok &&
+        const_result =
+            dispatch_constant_tree(tree, operators, eval_context.early_exit)::ResultOk{T}
+        eval_context.early_exit isa Val{true} &&
+            !const_result.ok &&
             return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
         return ResultOk(
             get_filled_array(eval_context.buffer, const_result.x, cX, axes(cX, 2)), true
@@ -789,6 +792,22 @@ end
     end
 end
 
+@noinline function branch0_leaves(
+    tree::AbstractExpressionNode{T}, ::Val{side}, ::Val{early_exit}
+) where {T,side,early_exit}
+    branch = side === :left ? get_child(tree, 1) : get_child(tree, 2)
+    leaves = if side === :left
+        (get_child(branch, 1), get_child(branch, 2), get_child(tree, 2))
+    else
+        (get_child(tree, 1), get_child(branch, 1), get_child(branch, 2))
+    end
+    ok = !(early_exit && any(leaf -> leaf.constant && !is_valid(leaf.val), leaves))
+    features = map(leaf -> leaf.constant ? one(UInt16) : leaf.feature, leaves)
+    values = map(leaf -> leaf.constant ? leaf.val : zero(T), leaves)
+    bounds = map(leaf -> leaf.constant ? -1 : typemax(Int), leaves)
+    return ok, features, values, bounds
+end
+
 function deg2_branch0_eval(
     tree::AbstractExpressionNode{T},
     cX::AbstractMatrix{T},
@@ -798,44 +817,37 @@ function deg2_branch0_eval(
     eval_context::EvalContext{false},
 ) where {T<:Number,F,F2,side}
     index_style = IndexStyle(typeof(cX))
-    branch = side === :left ? get_child(tree, 1) : get_child(tree, 2)
-    leaf1 = side === :left ? get_child(branch, 1) : get_child(tree, 1)
-    leaf2 = side === :left ? get_child(branch, 2) : get_child(branch, 1)
-    leaf3 = side === :left ? get_child(tree, 2) : get_child(branch, 2)
-
-    if eval_context.early_exit isa Val{true} && leaf1.constant && !is_valid(leaf1.val)
-        return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
-    elseif eval_context.early_exit isa Val{true} && leaf2.constant && !is_valid(leaf2.val)
-        return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
-    elseif eval_context.early_exit isa Val{true} && leaf3.constant && !is_valid(leaf3.val)
-        return ResultOk(get_array(eval_context.buffer, cX, axes(cX, 2)), false)
-    end
-
-    constant1 = leaf1.constant
-    constant2 = leaf2.constant
-    constant3 = leaf3.constant
-    feature1 = constant1 ? 1 : leaf1.feature
-    feature2 = constant2 ? 1 : leaf2.feature
-    feature3 = constant3 ? 1 : leaf3.feature
+    ok, features, values, bounds = branch0_leaves(tree, Val(side), eval_context.early_exit)
+    cumulator = get_array(eval_context.buffer, cX, axes(cX, 2))
+    ok || return ResultOk(cumulator, false)
+    feature1, feature2, feature3 = features
+    value1, value2, value3 = values
+    bound1, bound2, bound3 = bounds
     input1_index = first_feature_index(cX, feature1)
     input2_index = first_feature_index(cX, feature2)
     input3_index = first_feature_index(cX, feature3)
     feature_stride = size(cX, 1)
-    value1 = constant1 ? leaf1.val : zero(T)
-    value2 = constant2 ? leaf2.val : zero(T)
-    value3 = constant3 ? leaf3.val : zero(T)
+    constant1, constant2, constant3 = map(==(-1), bounds)
+    if side === :left && constant1 && constant2
+        val_branch = branch_op(value1, value2)::T
+        @return_on_nonfinite_val(eval_context, val_branch, cX)
+    elseif side === :right && constant2 && constant3
+        val_branch = branch_op(value2, value3)::T
+        @return_on_nonfinite_val(eval_context, val_branch, cX)
+    end
     side_val = Val(side)
     early_exit = eval_context.early_exit
-    cumulator = get_array(eval_context.buffer, cX, axes(cX, 2))
+    first_sample = first(axes(cX, 2))
     @inbounds @simd for j in axes(cX, 2)
+        offset = j - first_sample
         x1 = ifelse(
-            constant1, value1, feature_at(cX, input1_index, feature1, j, index_style)
+            offset > bound1, value1, feature_at(cX, input1_index, feature1, j, index_style)
         )
         x2 = ifelse(
-            constant2, value2, feature_at(cX, input2_index, feature2, j, index_style)
+            offset > bound2, value2, feature_at(cX, input2_index, feature2, j, index_style)
         )
         x3 = ifelse(
-            constant3, value3, feature_at(cX, input3_index, feature3, j, index_style)
+            offset > bound3, value3, feature_at(cX, input3_index, feature3, j, index_style)
         )
         cumulator[j] = _fused_binary3(op, branch_op, x1, x2, x3, side_val, early_exit)
         input1_index += feature_stride
@@ -968,15 +980,18 @@ function deg2_r0_eval(
 end
 
 """
-    dispatch_constant_tree(tree::AbstractExpressionNode{T}, operators::OperatorEnum) where {T}
+    dispatch_constant_tree(tree::AbstractExpressionNode{T}, operators::OperatorEnum, v_early_exit::Val{early_exit}=Val(true))
 
 Evaluate a tree which is assumed to not contain any variable nodes. This
 gives better performance, as we do not need to perform computation
-over an entire array when the values are all the same.
+over an entire array when the values are all the same. With `v_early_exit=Val(false)`,
+invalid intermediate values do not stop the evaluation.
 """
 @generated function dispatch_constant_tree(
-    tree::AbstractExpressionNode{T,D}, operators::OperatorEnum
-) where {T,D}
+    tree::AbstractExpressionNode{T,D},
+    operators::OperatorEnum,
+    v_early_exit::Val{early_exit}=Val(true),
+) where {T,D,early_exit}
     quote
         deg = tree.degree
         deg == 0 && return deg0_eval_constant(tree)
@@ -984,7 +999,7 @@ over an entire array when the values are all the same.
             $D,
             i -> i == deg,  # COV_EXCL_LINE
             i -> begin  # COV_EXCL_LINE
-                inner_dispatch_degn_eval_constant(tree, Val(i), operators)
+                inner_dispatch_degn_eval_constant(tree, Val(i), operators, v_early_exit)
             end,
         )
     end
@@ -992,18 +1007,20 @@ end
 
 # Now that we have the degree, we can get the operator
 @generated function inner_dispatch_degn_eval_constant(
-    tree::AbstractExpressionNode{T}, ::Val{degree}, operators::OperatorEnum
-) where {T,degree}
+    tree::AbstractExpressionNode{T},
+    ::Val{degree},
+    operators::OperatorEnum,
+    v_early_exit::Val{early_exit},
+) where {T,degree,early_exit}
     nops = get_nops(operators, Val(degree))
     get_inputs = quote
         cs = get_children(tree, Val($degree))
         Base.Cartesian.@nexprs(  # COV_EXCL_LINE
             $degree,
             i -> begin  # COV_EXCL_LINE
-                input_i = let result = dispatch_constant_tree(cs[i], operators)
-                    !result.ok && return result
-                    result.x
-                end
+                result_i = dispatch_constant_tree(cs[i], operators, v_early_exit)
+                early_exit && !result_i.ok && return result_i
+                input_i = result_i.x
             end
         )
         inputs = Base.Cartesian.@ntuple($degree, i -> input_i)
@@ -1074,9 +1091,10 @@ function deg0_diff_eval(
     tree::AbstractExpressionNode{T1}, cX::AbstractMatrix{T}, operators::OperatorEnum
 )::ResultOk where {T<:Number,T1}
     if tree.constant
-        ResultOk(fill_similar(one(T), cX, axes(cX, 2)) .* tree.val, true)
+        ResultOk(fill_similar(one(T), cX, axes(cX, 2)) .* tree.val, is_valid(tree.val))
     else
-        ResultOk(cX[tree.feature, :], true)
+        out = cX[tree.feature, :]
+        ResultOk(out, is_valid_array(out))
     end
 end
 
