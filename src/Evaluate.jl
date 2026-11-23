@@ -365,6 +365,27 @@ function deg1_eval(
     return degn_eval((cumulator,), op, eval_context)
 end
 
+@generated function apply_op_array(
+    cumulators::NTuple{D,<:AbstractVector{T}},
+    op_idx::Integer,
+    operators::O,
+    eval_context::EvalContext,
+)::ResultOk where {D,T,O<:OperatorEnum}
+    nops = get_nops(O, Val(D))
+    if nops == 0 || nops > OPERATOR_LIMIT_BEFORE_SLOWDOWN
+        return quote
+            degn_eval(cumulators, operators[$D][op_idx], eval_context)
+        end
+    end
+    return quote
+        Base.Cartesian.@nif(
+            $nops,
+            i -> i == op_idx,
+            i -> degn_eval(cumulators, get_op(operators, Val($D), Val(i)), eval_context),
+        )
+    end
+end
+
 function deg0_eval(
     tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, eval_context::EvalContext
 )::ResultOk where {T}
