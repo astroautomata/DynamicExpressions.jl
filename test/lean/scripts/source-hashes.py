@@ -27,7 +27,8 @@ def rows(table, columns, path_column):
 
 
 def digest(path):
-    return sha256((ROOT / path).read_bytes()).hexdigest()
+    # Hash LF content so Windows checkouts with core.autocrlf agree with CI.
+    return sha256((ROOT / path).read_bytes().replace(b'\r\n', b'\n')).hexdigest()
 
 
 def read_hashes():
