@@ -37,13 +37,13 @@ jobs:
             julia-version: '1.10'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: "Set up Julia"
-        uses: julia-actions/setup-julia@v2
+        uses: julia-actions/setup-julia@v3
         with:
           version: ${{ matrix.julia-version }}
       - name: "Cache artifacts"
-        uses: julia-actions/cache@v2
+        uses: julia-actions/cache@v3
         with:
           cache-compiled: false
       - name: "Build package"
@@ -77,11 +77,11 @@ jobs:
           # - "enzyme"  # flaky; seems to infinitely compile and fail the CI
           - "jet"
     steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
         with:
           version: ${{ matrix.julia-version }}
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
         with:
           cache-compiled: false
       - uses: julia-actions/julia-buildpkg@v1
@@ -106,11 +106,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
         with:
           version: '1'
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
         with:
           cache-compiled: false
       - uses: julia-actions/julia-buildpkg@v1
@@ -142,7 +142,7 @@ jobs:
       - optim_v1_smoketest
     steps:
       # Codecov uploader expects a git checkout (commit metadata + repo root)
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download coverage artifacts
         uses: actions/download-artifact@v7
