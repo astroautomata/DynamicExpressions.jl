@@ -8,6 +8,7 @@ import DynExpr.Eval.AliasProofs
 import DynExpr.Eval.Final
 import DynExpr.Eval.ZeroProofs
 import DynExpr.Eval.SafeProofs
+import DynExpr.Eval.FastProofs
 
 /-! Slice root: imports this slice's files and lists its registry entries. -/
 
@@ -28,6 +29,14 @@ def entries : List Entry := [
     "Well-formed tree (degree <= D, operator indices in range, features in 1..size(X,1)); at least one sample; Finite inputs X (XFinite), finite constants (ConstsFinite), operators mapping finite arguments to finite values (OpsFinite); is_valid_array accepts all-valid arrays (no overflow in its sum, true for JF)."
     ``evalDenote ``evalDenote_proof .proven
     "The precondition that is_valid_array accepts all-valid arrays is needed: it fails for Float64 near floatmax (bug refuted as nodeutils-array-overflow).",
+  entry "eval-fast-agree" "src/Evaluate.jl" ["_eval_tree_array_fast", "eval_tree_array", "EvalContext"]
+    "_eval_tree_array_fast agrees identically with eval_tree_array for every tree, matrix, operator enum, and non-turbo EvalContext."
+    "eval_context.turbo == false."
+    ``evalFastAgree ``evalFastAgree_proof,
+  entry "eval-apply-op-array" "src/Evaluate.jl" ["apply_op_array", "degn_eval", "OperatorEnum"]
+    "apply_op_array looks up operators[D][op_idx] (both <= 15 via @nif and > 15 via direct indexing) and applies degn_eval elementwise across equal-length cumulators."
+    "1 <= D; 1 <= op_idx <= length(operators[D]); all cumulator vectors share the same length."
+    ``applyOpArrayDenote ``applyOpArrayDenote_proof,
   entry "eval-buffer" "src/Evaluate.jl" ["eval_tree_array", "EvalContext", "ArrayBuffer", "get_array", "get_filled_array", "get_feature_array"]
     "With an ArrayBuffer that fits (vector-backed, or matrix-backed with one column per sample and at least count_nodes free rows) the result equals the unbuffered result."
     "As eval-denote; vector-backed buffer, or matrix buffer with size(buffer,2) == samples and >= count_nodes free rows."

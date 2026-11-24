@@ -276,6 +276,14 @@ def degnEval (f : List T → T) : List (JVec T) → Jl (JVec T)
       pure (f args))
     pure vs.toArray
 
+/-- `apply_op_array` (`src/Evaluate.jl:381-400`): selects `operators[D][op_idx]`
+via `@nif` when `1 ≤ nops ≤ OPERATOR_LIMIT_BEFORE_SLOWDOWN` and direct indexing
+otherwise, then applies `degn_eval`. -/
+def applyOpArray (o : OpEnum T) (op : Nat) (cums : List (JVec T)) : Jl (JVec T) := do
+  let ops := opsOf o cums.length
+  let f ← if ops.length = 0 || operatorLimit < ops.length then idxOp ops op else nifOp ops op
+  degnEval f cums
+
 /-- `@return_on_nonfinite_val` (src/Evaluate.jl:16-24) followed by the
 continuation `k`. -/
 def retV (cx : Ctx) (X : JMat T) (v : T) (k : Buf T → Jl (ResultOk T × Buf T))
@@ -670,7 +678,14 @@ structure Ext where
 structure ExtImpl (T : Type) where
   turboEval : Tree T → JMat T → Jl (ResultOk T)
 
-/-- `eval_tree_array(tree, X, ::OperatorEnum; eval_context)` (src/Evaluate.jl:260-281)
+/-- `_eval_tree_array_fast(tree, X, ::OperatorEnum, eval_context::EvalContext{false})`
+(`src/Evaluate.jl:260-271`): positional non-turbo entry point equivalent to
+`eval_tree_array` with `turbo = false`. -/
+def evalTreeArrayFast (D : Nat) (t : Tree T) (X : JMat T) (o : OpEnum T)
+    (ec : EvalContext T) : Jl (JVec T × Bool) :=
+  evalArr ⟨ec.earlyExit, ec.useFused, D⟩ o X t ec.buffer
+
+/-- `eval_tree_array(tree, X, ::OperatorEnum; eval_context)` (src/Evaluate.jl:273-294)
 for a tree of node type with maximum degree `D`. -/
 def evalTreeArray (ext : Ext) (impl : ExtImpl T) (D : Nat) (t : Tree T) (X : JMat T)
     (o : OpEnum T) (ec : EvalContext T) : Jl (JVec T × Bool) :=

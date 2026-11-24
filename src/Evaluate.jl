@@ -382,7 +382,7 @@ end
     cumulators::NTuple{D,<:AbstractVector{T}},
     op_idx::Integer,
     operators::O,
-    eval_context::EvalContext,
+    eval_context::EvalContext{false},
 )::ResultOk where {D,T,O<:OperatorEnum}
     nops = get_nops(O, Val(D))
     if nops == 0 || nops > OPERATOR_LIMIT_BEFORE_SLOWDOWN
