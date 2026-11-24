@@ -8,6 +8,7 @@ import DynExpr.Eval.AliasProofs
 import DynExpr.Eval.Final
 import DynExpr.Eval.ZeroProofs
 import DynExpr.Eval.SafeProofs
+import DynExpr.Eval.FeatureMajor
 
 /-! Slice root: imports this slice's files and lists its registry entries. -/
 
@@ -28,6 +29,22 @@ def entries : List Entry := [
     "Well-formed tree (degree <= D, operator indices in range, features in 1..size(X,1)); at least one sample; Finite inputs X (XFinite), finite constants (ConstsFinite), operators mapping finite arguments to finite values (OpsFinite); is_valid_array accepts all-valid arrays (no overflow in its sum, true for JF)."
     ``evalDenote ``evalDenote_proof .proven
     "The precondition that is_valid_array accepts all-valid arrays is needed: it fails for Float64 near floatmax (bug refuted as nodeutils-array-overflow).",
+  entry "eval-fused-valid" "src/Evaluate.jl" ["_kernels_validate", "degn_eval", "deg0_eval", "deg2_l0_r0_eval", "deg2_l0_eval", "deg2_r0_eval", "deg2_branch0_eval"]
+    "The fused SIMD accumulator validity check (is_valid(acc) || all(is_valid, out)) agrees with elementwise validity for every float vector, including NaN, Inf, and Float16 sum overflow."
+    "Arbitrary float vectors (JF and Float16 sum-overflow model)."
+    ``fusedValidAgree ``fusedValidAgree_proof,
+  entry "eval-feature-major-equiv" "src/Evaluate.jl" ["FeatureMajorMatrix", "feature_major_matrix", "first_feature_index", "feature_stride", "feature_at", "get_feature_array"]
+    "FeatureMajorMatrix constructed by feature_major_matrix(X) preserves matrix dimensions, checked getindex (including BoundsError), unit-stride feature_at, and buffered/unbuffered get_feature_array."
+    "Arbitrary dense matrix X and valid feature/sample coordinates (arbitrary coordinates for getindex)."
+    ``featureMajorEquiv ``featureMajorEquiv_proof,
+  entry "eval-feature-major-batch-safe" "src/Evaluate.jl" ["feature_major_batch", "FeatureMajorMatrix"]
+    "feature_major_batch(X, indices) raises BoundsError (never undefined behaviour) when any index is out of range, and otherwise gathers exact transposed columns X[f, indices[k]]."
+    "Arbitrary dense matrix X and arbitrary column index list."
+    ``featureMajorBatchSafe ``featureMajorBatchSafe_proof,
+  entry "eval-kernels-validate-sound" "src/Evaluate.jl" ["_kernels_validate", "eval_tree_array"]
+    "When _kernels_validate is active and fused validity agrees with is_valid_array, skipping the duplicate @return_on_nonfinite_array and top-level is_valid_array checks produces the exact same flag and early-exit behaviour as unvalidated evaluation."
+    "fusedValid agrees with isValidArray (proven for JF)."
+    ``kernelsValidateSound ``kernelsValidateSound_proof,
   entry "eval-buffer" "src/Evaluate.jl" ["eval_tree_array", "EvalContext", "ArrayBuffer", "get_array", "get_filled_array", "get_feature_array"]
     "With an ArrayBuffer that fits (vector-backed, or matrix-backed with one column per sample and at least count_nodes free rows) the result equals the unbuffered result."
     "As eval-denote; vector-backed buffer, or matrix buffer with size(buffer,2) == samples and >= count_nodes free rows."
