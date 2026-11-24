@@ -111,6 +111,7 @@ function feature_major_matrix(X::AbstractMatrix{T}) where {T}
     return FeatureMajorMatrix{T}(permutedims(X))
 end
 function feature_major_batch(X::Matrix{T}, indices::AbstractVector{Int}) where {T}
+    checkbounds(X, :, indices)
     nf = size(X, 1)
     nb = length(indices)
     data = Matrix{T}(undef, nb, nf)
