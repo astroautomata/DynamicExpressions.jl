@@ -129,13 +129,13 @@ theorem get?_exists (X : JMat T) (i j : Nat)
     exact offset_lt _ _ _ _ h.1 h.2), ?_⟩
   simp [get?, access, h]
 
-/-- Out-of-bounds matrix coordinates raise `BoundsError` (src/Evaluate.jl:113). -/
+/-- Out-of-bounds matrix coordinates raise `BoundsError` (src/Evaluate.jl:108). -/
 theorem get?_oob (X : JMat T) (i j : Nat)
     (h : ¬ ((1 ≤ i ∧ i ≤ X.nrows) ∧ (1 ≤ j ∧ j ≤ X.ncols))) :
     X.get? i j = .error .boundsError := by
   simp [get?, access, h]
 
-/-- In-bounds matrix coordinates return the column-major element (src/Evaluate.jl:113). -/
+/-- In-bounds matrix coordinates return the column-major element (src/Evaluate.jl:108). -/
 theorem get?_inbounds (X : JMat T) (i j : Nat)
     (hi₁ : 1 ≤ i) (hi₂ : i ≤ X.nrows)
     (hj₁ : 1 ≤ j) (hj₂ : j ≤ X.ncols) :

@@ -98,11 +98,6 @@ function get_filled_array(buffer::ArrayBuffer, value, template::AbstractArray, a
     return fill!(get_array(buffer, template, axes...), value)
 end
 
-"""
-Wrapper storing a `(nfeatures, nsamples)` feature matrix in transposed
-`(nsamples, nfeatures)` column-major layout so each feature's sample vector
-is contiguous (unit-stride) in memory for SIMD tree evaluation.
-"""
 struct FeatureMajorMatrix{T} <: AbstractMatrix{T}
     data::Matrix{T}
     FeatureMajorMatrix{T}(data::Matrix{T}) where {T} = new{T}(data)
