@@ -28,7 +28,9 @@ end
 macro return_on_nonfinite_array(eval_context, array)
     :(
         if $(esc(eval_context)).early_exit isa Val{true} &&
-            !(_kernels_validate(eltype($(esc(array))), $(esc(eval_context))) isa Val{true}) &&
+            !(
+                _kernels_validate(eltype($(esc(array))), $(esc(eval_context))) isa Val{true}
+            ) &&
             !is_valid_array($(esc(array)))
             return $(ResultOk)($(esc(array)), false)
         end
@@ -121,8 +123,9 @@ end
 Base.size(A::FeatureMajorMatrix) = (size(A.data, 2), size(A.data, 1))
 Base.IndexStyle(::Type{<:FeatureMajorMatrix}) = IndexCartesian()
 Base.@propagate_inbounds Base.getindex(A::FeatureMajorMatrix, f::Int, j::Int) = A.data[j, f]
-Base.@propagate_inbounds Base.setindex!(A::FeatureMajorMatrix, v, f::Int, j::Int) =
-    (A.data[j, f] = v; A)
+Base.@propagate_inbounds Base.setindex!(A::FeatureMajorMatrix, v, f::Int, j::Int) = (
+    A.data[j, f] = v; A
+)
 Base.similar(::FeatureMajorMatrix, ::Type{S}, dims::Dims) where {S} = Array{S}(undef, dims)
 Base.parent(A::FeatureMajorMatrix) = A.data
 Base.fill!(A::FeatureMajorMatrix, v) = (fill!(A.data, v); A)
@@ -402,9 +405,7 @@ function _eval_tree_array(
 end
 
 @generated function degn_eval(
-    cumulators::NTuple{N,<:AbstractVector{T}},
-    op::F,
-    ::EvalContext{false,B,E,BUF,U},
+    cumulators::NTuple{N,<:AbstractVector{T}}, op::F, ::EvalContext{false,B,E,BUF,U}
 )::ResultOk where {N,T,F,B,E,BUF,U}
     # Fast general implementation of `cumulators[1] .= op.(cumulators[1], cumulators[2], ...)`
     if E === true && U === true && T <: _FUSED_VALID_FLOAT && N >= 2
@@ -952,13 +953,19 @@ function deg2_branch0_eval(
         @inbounds @simd for j in axes(cX, 2)
             offset = j - first_sample
             x1 = ifelse(
-                offset > bound1, value1, feature_at(cX, input1_index, feature1, j, index_style)
+                offset > bound1,
+                value1,
+                feature_at(cX, input1_index, feature1, j, index_style),
             )
             x2 = ifelse(
-                offset > bound2, value2, feature_at(cX, input2_index, feature2, j, index_style)
+                offset > bound2,
+                value2,
+                feature_at(cX, input2_index, feature2, j, index_style),
             )
             x3 = ifelse(
-                offset > bound3, value3, feature_at(cX, input3_index, feature3, j, index_style)
+                offset > bound3,
+                value3,
+                feature_at(cX, input3_index, feature3, j, index_style),
             )
             x = _fused_binary3(op, branch_op, x1, x2, x3, side_val, early_exit)
             cumulator[j] = x
@@ -1119,7 +1126,9 @@ function deg2_l0_eval(
         if validate
             acc = zero(T)
             @inbounds @simd for j in eachindex(cumulator)
-                x = op(feature_at(cX, input_index, feature, j, index_style), cumulator[j])::T
+                x = op(
+                    feature_at(cX, input_index, feature, j, index_style), cumulator[j]
+                )::T
                 cumulator[j] = x
                 acc += x
                 input_index += fstride
@@ -1169,7 +1178,9 @@ function deg2_r0_eval(
         if validate
             acc = zero(T)
             @inbounds @simd for j in eachindex(cumulator)
-                x = op(cumulator[j], feature_at(cX, input_index, feature, j, index_style))::T
+                x = op(
+                    cumulator[j], feature_at(cX, input_index, feature, j, index_style)
+                )::T
                 cumulator[j] = x
                 acc += x
                 input_index += fstride

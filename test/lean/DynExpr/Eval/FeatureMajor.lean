@@ -10,7 +10,7 @@ namespace DynExpr.Eval
 
 variable {T : Type} [JlScalar T]
 
-/-- `FeatureMajorMatrix{T}` (`src/Evaluate.jl:101-128`): wraps a column-major
+/-- `FeatureMajorMatrix{T}` (`src/Evaluate.jl:103-131`): wraps a column-major
 `(nsamples, nfeatures)` matrix `data` and exposes logical size
 `(nfeatures, nsamples)` so each feature's samples are contiguous in memory. -/
 structure FeatureMajorMat (T : Type) where
@@ -18,16 +18,16 @@ structure FeatureMajorMat (T : Type) where
 
 namespace FeatureMajorMat
 
-/-- Logical number of rows (features): `size(A, 1) = size(A.data, 2)` (`src/Evaluate.jl:121`). -/
+/-- Logical number of rows (features): `size(A, 1) = size(A.data, 2)` (`src/Evaluate.jl:123`). -/
 def nrows (A : FeatureMajorMat T) : Nat := A.data.ncols
 
-/-- Logical number of columns (samples): `size(A, 2) = size(A.data, 1)` (`src/Evaluate.jl:121`). -/
+/-- Logical number of columns (samples): `size(A, 2) = size(A.data, 1)` (`src/Evaluate.jl:123`). -/
 def ncols (A : FeatureMajorMat T) : Nat := A.data.nrows
 
-/-- `Base.getindex(A::FeatureMajorMatrix, f, j) = A.data[j, f]` (`src/Evaluate.jl:123`). -/
+/-- `Base.getindex(A::FeatureMajorMatrix, f, j) = A.data[j, f]` (`src/Evaluate.jl:125`). -/
 def get? (A : FeatureMajorMat T) (f j : Nat) : Jl T := A.data.get? j f
 
-/-- `feature_major_matrix(X)` (`src/Evaluate.jl:105-107`): `permutedims(X)`. -/
+/-- `feature_major_matrix(X)` (`src/Evaluate.jl:107-109`): `permutedims(X)`. -/
 def ofMat (X : JMat T) : FeatureMajorMat T :=
   ⟨JMat.ofFn X.ncols X.nrows fun j f =>
     X.data[X.nrows * j.val + f.val]'(by
@@ -39,19 +39,19 @@ def ofMat (X : JMat T) : FeatureMajorMat T :=
         _ = X.nrows * (j.val + 1) := by rw [Nat.mul_succ]
         _ ≤ X.nrows * X.ncols := Nat.mul_le_mul_left X.nrows hj)⟩
 
-/-- `first_feature_index(X::FeatureMajorMatrix, feature)` (`src/Evaluate.jl:154-157`):
+/-- `first_feature_index(X::FeatureMajorMatrix, feature)` (`src/Evaluate.jl:157-160`):
 checks `1 ≤ feature ≤ size(X, 1)` and returns `(feature - 1) * size(X.data, 1) + 1`. -/
 def firstFeatureIndex (A : FeatureMajorMat T) (f : Nat) : Jl Nat :=
   if 1 ≤ f ∧ f ≤ A.nrows then .ok ((f - 1) * A.data.nrows + 1)
   else .error .boundsError
 
 /-- `feature_at(X::FeatureMajorMatrix, input_index, feature, j, _)` with
-`feature_stride(::FeatureMajorMatrix) = 1` (`src/Evaluate.jl:160, 169-172`):
+`feature_stride(::FeatureMajorMatrix) = 1` (`src/Evaluate.jl:163, 169-172`):
 at sample `j` (1-based), reads `@inbounds X.data[(f - 1) * n + j]`. -/
 def featureAtFM (A : FeatureMajorMat T) (f j : Nat) : Jl T :=
   linInb A.data ((f - 1) * A.data.nrows + j)
 
-/-- `get_feature_array(buffer, X::FeatureMajorMatrix, feature)` (`src/Evaluate.jl:133-147`):
+/-- `get_feature_array(buffer, X::FeatureMajorMatrix, feature)` (`src/Evaluate.jl:136-150`):
 copies the contiguous slice `X.data[(f-1)*n + 1 .. f*n]` (unchecked after `checkbounds`). -/
 def rowInbFM (A : FeatureMajorMat T) (f : Nat) : Jl (JVec T) :=
   if h : 1 ≤ f ∧ f ≤ A.nrows then
@@ -84,7 +84,7 @@ def getFeatureFM : Buf T → FeatureMajorMat T → Nat → Jl (JVec T × Buf T)
     let r ← rowInbFM A f
     pure (r, b)
 
-/-- `feature_major_batch(X::Matrix{T}, indices)` (`src/Evaluate.jl:108-120`):
+/-- `feature_major_batch(X::Matrix{T}, indices)` (`src/Evaluate.jl:110-122`):
 checks `checkbounds(X, :, indices)` first, then gathers transposed columns. -/
 def batch (X : JMat T) (indices : List Nat) : Jl (FeatureMajorMat T) :=
   if h : ∀ c ∈ indices, 1 ≤ c ∧ c ≤ X.ncols then
@@ -103,7 +103,7 @@ def batch (X : JMat T) (indices : List Nat) : Jl (FeatureMajorMat T) :=
 end FeatureMajorMat
 
 /-- Fused validity check `is_valid(acc) || all(is_valid, out)` where
-`acc = foldl (+) zero(T) out` (`src/Evaluate.jl:414-421, 478-485, ...`). -/
+`acc = foldl (+) zero(T) out` (`src/Evaluate.jl:415-422, 478-485, ...`). -/
 def fusedValid (a : JVec T) : Bool :=
   valid (a.foldl JlScalar.add JlScalar.zero) || a.all valid
 
@@ -115,20 +115,20 @@ def fusedValid16 (a : List JF) : Bool :=
     | .fin q => decide ((-65520 : Rat) < q ∧ q < 65520)
     | _ => false) || a.all JF.valid
 
-/-- `_kernels_validate(T, eval_context)` (`src/Evaluate.jl:222-225`):
+/-- `_kernels_validate(T, eval_context)` (`src/Evaluate.jl:225-228`):
 true iff `turbo = false`, `early_exit = true`, `use_fused = true`, and
 `T <: Union{AbstractFloat, Complex{<:AbstractFloat}}`. -/
 def kernelsValidate (T : Type) [JlScalar T] (cx : Ctx) : Bool :=
   cx.earlyExit && cx.useFused && JlScalar.floatLike (T := T)
 
-/-- Mirror of `_eval_tree_array` with `_kernels_validate` active (`src/Evaluate.jl:27-43,
+/-- Mirror of `_eval_tree_array` with `_kernels_validate` active (`src/Evaluate.jl:27-45,
 338-351, 407-552`): each kernel computes `fusedValid`/`isValidArray` internally so
 `@return_on_nonfinite_array` and the top-level check skip the duplicate pass.
 Here we track the exact validity flag returned by every kernel when `v = kernelsValidate T cx`. -/
 def kernelWrap (v : Bool) (r : ResultOk T) : ResultOk T :=
   if v then ⟨r.x, r.ok && fusedValid r.x, r.id⟩ else r
 
-/-- Checked child transition in `src/Evaluate.jl:35-43` when `_kernels_validate` is enabled:
+/-- Checked child transition in `src/Evaluate.jl:37-45` when `_kernels_validate` is enabled:
 the caller checks `!r.ok` and skips `!is_valid_array(r.x)` when `kernelsValidate` is true. -/
 def checkedV (cx : Ctx) (ev : Buf T → Jl (ResultOk T × Buf T))
     (k : JVec T → Ident → Buf T → Jl (ResultOk T × Buf T)) (b : Buf T) :
@@ -139,7 +139,7 @@ def checkedV (cx : Ctx) (ev : Buf T → Jl (ResultOk T × Buf T))
     pure (⟨r.x, false, r.id⟩, b)
   else k r.x r.id b
 
-/-- Top-level flag check in `eval_tree_array` (`src/Evaluate.jl:336-346`). -/
+/-- Top-level flag check in `eval_tree_array` (`src/Evaluate.jl:339-349`). -/
 def finishFlagV (cx : Ctx) (r : ResultOk T) : Bool :=
   if !r.ok then false
   else if !cx.earlyExit || kernelsValidate T cx then true
