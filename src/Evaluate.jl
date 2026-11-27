@@ -257,6 +257,19 @@ def eval(current_node)
 The bulk of the code is for optimizations and pre-emptive NaN/Inf checks,
 which speed up evaluation significantly.
 """
+function _eval_tree_array_fast(
+    tree::AbstractExpressionNode{T},
+    cX::AbstractMatrix{T},
+    operators::OperatorEnum,
+    eval_context::EvalContext{false},
+) where {T}
+    result = _eval_tree_array(tree, cX, operators, eval_context)
+    return (
+        result.x,
+        result.ok && (eval_context.early_exit isa Val{false} || is_valid_array(result.x)),
+    )
+end
+
 function eval_tree_array(
     tree::AbstractExpressionNode{T},
     cX::AbstractMatrix{T},
@@ -363,6 +376,27 @@ function deg1_eval(
     cumulator::AbstractVector{T}, op::F, eval_context::EvalContext
 )::ResultOk where {T,F}
     return degn_eval((cumulator,), op, eval_context)
+end
+
+@generated function apply_op_array(
+    cumulators::NTuple{D,<:AbstractVector{T}},
+    op_idx::Integer,
+    operators::O,
+    eval_context::EvalContext{false},
+)::ResultOk where {D,T,O<:OperatorEnum}
+    nops = get_nops(O, Val(D))
+    if nops == 0 || nops > OPERATOR_LIMIT_BEFORE_SLOWDOWN
+        return quote
+            degn_eval(cumulators, operators[$D][op_idx], eval_context)
+        end
+    end
+    return quote
+        Base.Cartesian.@nif(
+            $nops,
+            i -> i == op_idx,
+            i -> degn_eval(cumulators, get_op(operators, Val($D), Val(i)), eval_context),
+        )
+    end
 end
 
 function deg0_eval(
