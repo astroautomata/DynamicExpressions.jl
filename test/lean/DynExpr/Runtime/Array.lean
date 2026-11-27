@@ -129,6 +129,22 @@ theorem get?_exists (X : JMat T) (i j : Nat)
     exact offset_lt _ _ _ _ h.1 h.2), ?_⟩
   simp [get?, access, h]
 
+/-- Out-of-bounds matrix coordinates raise `BoundsError` (src/Evaluate.jl:110). -/
+theorem get?_oob (X : JMat T) (i j : Nat)
+    (h : ¬ ((1 ≤ i ∧ i ≤ X.nrows) ∧ (1 ≤ j ∧ j ≤ X.ncols))) :
+    X.get? i j = .error .boundsError := by
+  simp [get?, access, h]
+
+/-- In-bounds matrix coordinates return the column-major element (src/Evaluate.jl:110). -/
+theorem get?_inbounds (X : JMat T) (i j : Nat)
+    (hi₁ : 1 ≤ i) (hi₂ : i ≤ X.nrows)
+    (hj₁ : 1 ≤ j) (hj₂ : j ≤ X.ncols) :
+    X.get? i j = .ok (X.data[X.nrows * (j - 1) + (i - 1)]'(by
+      rw [X.size_eq]
+      exact offset_lt _ _ _ _ ⟨hi₁, hi₂⟩ ⟨hj₁, hj₂⟩)) := by
+  have h : (1 ≤ i ∧ i ≤ X.nrows) ∧ (1 ≤ j ∧ j ≤ X.ncols) := ⟨⟨hi₁, hi₂⟩, ⟨hj₁, hj₂⟩⟩
+  simp [get?, access, h]
+
 /-- Checked and unchecked accesses agree on valid coordinates
 (src/Evaluate.jl:127-128). -/
 theorem getInbounds_eq_get? (X : JMat T) (i j : Nat)
